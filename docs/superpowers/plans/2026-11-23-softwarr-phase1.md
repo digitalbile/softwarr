@@ -18,7 +18,7 @@
 - The owner account (`is_owner = 1`) can never be deleted, disabled, demoted, or linked to OIDC. The local login form is always shown.
 - OIDC identity key is (issuer, `sub`). Email is never used to match a login to an account except under the opt-in "link by verified email" setting with `email_verified=true`, and never for the owner.
 - Every admin endpoint checks the role on the server.
-- Environment variables (restart required): `SOFTWARR_PORT` (default `7979`), `SOFTWARR_DATA_DIR` (default `/config`), `SOFTWARR_URL_BASE` (default empty, normalized to `""` or `/base` without a trailing slash).
+- Environment variables (restart required): `SOFTWARR_PORT` (default `7979`), `SOFTWARR_DATA_DIR` (default `/config`), `SOFTWARR_URL_BASE` (default empty, normalized to `""` or `/base` without a trailing slash). The Docker image adds linuxserver-style `PUID` (default `1000`), `PGID` (default `1000`), and `UMASK` (default `022`), handled by the entrypoint, not by Go.
 - Default Prowlarr categories: `[4000, 4010, 4020, 4030]`. Default qBittorrent category: `softwarr`. Default stall threshold: 24 hours. Default comment requirement: optional. Default global retention: `0` (never expire). OIDC auto-provisioning defaults on. Link by verified email defaults off.
 - Exact UI copy fixed by the spec: request prompt "Why do you need this software?", duplicate rejection "This release has already been requested.", unrequestable badge "No compatible download client".
 - All user-facing prose (UI strings, error messages, README, PR descriptions) goes through the `humanizer:humanizer` skill before commit: no em or en dashes, sentence-case headings, no decorative bold.
@@ -1146,25 +1146,40 @@ test('system page renders health levels')
 ### Task 26: Docker image, README, and end-to-end smoke test
 
 **Files:**
-- Create: `Dockerfile`, `.dockerignore`, `deploy/compose.example.yaml`, `scripts/smoke.sh`
+- Create: `Dockerfile`, `.dockerignore`, `docker/entrypoint.sh`, `docker/softwarr-wrapper.sh`, `deploy/compose.example.yaml`, `scripts/smoke.sh`
 - Modify: `README.md`, `Makefile` (`docker`, `smoke` targets)
 
 **Interfaces:**
 - Consumes: everything.
 
+The image follows the linuxserver convention: it starts as root, then drops to the user given by `PUID`/`PGID` so softwarr's files match the user qBittorrent runs as. Under Linux's default `fs.protected_hardlinks=1`, hardlinks fail when softwarr can't write the files it links.
+
 Dockerfile:
 1. Stage `web`: `node:24-alpine`, `npm ci && npm run build` in `/src/web`.
 2. Stage `build`: `golang:1.27-alpine`, copy `web/dist` from stage 1, `CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" -o /out/softwarr ./cmd/softwarr`.
-3. Final: `gcr.io/distroless/static-debian12:nonroot`, binary at `/usr/local/bin/softwarr`, `ENV SOFTWARR_DATA_DIR=/config`, `EXPOSE 7979`, `VOLUME /config`, `USER 65532:65532`, `ENTRYPOINT ["softwarr"]`.
+3. Final: `alpine` (pin the current 3.x minor), `apk add --no-cache su-exec ca-certificates tzdata`. Binary at `/app/softwarr`, `docker/softwarr-wrapper.sh` installed as `/usr/local/bin/softwarr`, `docker/entrypoint.sh` at `/entrypoint.sh`. `ENV SOFTWARR_DATA_DIR=/config PUID=1000 PGID=1000 UMASK=022`, `EXPOSE 7979`, `VOLUME /config`, `ENTRYPOINT ["/entrypoint.sh"]`. No `USER` line.
 
-`deploy/compose.example.yaml` runs softwarr, qBittorrent, and Prowlarr. The qBittorrent downloads folder and the softwarr library sit under one host `/data` mount so hardlinks work, and comments explain why.
+`docker/entrypoint.sh` (`#!/bin/sh`, `set -eu`):
+- If running as root: create group `softwarr` with `PGID` and user `softwarr` with `PUID` (reuse an existing group or user with that ID instead of failing), `chown softwarr:softwarr /config` and its contents when the top-level owner differs, `umask "$UMASK"`, then `exec su-exec "$PUID:$PGID" /app/softwarr "$@"`.
+- If not root (the user set `user:` in compose): skip all of that, apply `umask "$UMASK"`, and `exec /app/softwarr "$@"`.
+- Print one startup line: `softwarr running as uid=<uid> gid=<gid> umask=<umask>`.
 
-`scripts/smoke.sh`: builds the image, runs it with a temp `/config`, waits for `/api/v1/ping`, POSTs `/setup`, logs in, checks `GET /system/health` returns JSON, runs `docker exec <c> softwarr reset-password` and checks the output contains "Temporary password:", then removes the container. It exits non-zero on any failure.
+`docker/softwarr-wrapper.sh` makes `docker exec softwarr softwarr reset-password` safe. `docker exec` runs as root by default, so a root-run command could create SQLite `-wal`/`-shm` files the app can't write. The wrapper does the same root check and runs `su-exec "$PUID:$PGID" /app/softwarr "$@"` under the same umask.
 
-README (through the humanizer): what softwarr is, the quick start with the compose example, environment variables, volumes and the same-filesystem note for hardlinks, owner recovery (`docker exec softwarr softwarr reset-password`), OIDC setup (external URL, redirect URI, admin group), the license, and a note that *arr projects are reference only.
+`deploy/compose.example.yaml` runs softwarr, qBittorrent, and Prowlarr, all with the same `PUID`, `PGID`, and `UMASK`. The qBittorrent downloads folder and the softwarr library sit under one host `/data` mount so hardlinks work, and comments explain both choices.
+
+`scripts/smoke.sh` builds the image and runs it with a temp `/config` and `PUID=1234 PGID=1234`, then:
+- waits for `/api/v1/ping`, POSTs `/setup`, logs in, and checks `GET /system/health` returns JSON
+- checks `docker exec <c> stat -c '%u:%g' /config/softwarr.db` prints `1234:1234`
+- checks `docker exec <c> ps -o user,args` (or `/proc/1/status`) shows the softwarr process isn't running as root
+- runs `docker exec <c> softwarr reset-password`, checks the output contains "Temporary password:", and checks every `/config/softwarr.db*` file is still owned by `1234:1234`
+- runs a second container with `--user 1234:1234` against a fresh temp dir owned by 1234 and checks `/api/v1/ping`, to cover the non-root path
+- removes the containers. It exits non-zero on any failure.
+
+README (through the humanizer): what softwarr is, the quick start with the compose example, environment variables (including `PUID`, `PGID`, `UMASK`), volumes and the same-filesystem and same-user notes for hardlinks, owner recovery (`docker exec softwarr softwarr reset-password`), OIDC setup (external URL, redirect URI, admin group), the license, and a note that *arr projects are reference only.
 
 - [ ] **Step 1: Write the failing check:** add `make smoke` and run it. Expect failure (no Dockerfile).
 - [ ] **Step 2: Implement** the Dockerfile, compose example, and README.
-- [ ] **Step 3: Run** `make smoke` and expect `smoke test passed` with exit code 0. Check `docker image ls softwarr` reports an image size under 40 MB.
+- [ ] **Step 3: Run** `make smoke` and expect `smoke test passed` with exit code 0. Check `docker image ls softwarr` reports an image size under 50 MB.
 - [ ] **Step 4: Run** the full suite: `go test ./... && (cd web && npx vitest run)`, and expect PASS.
 - [ ] **Step 5: Commit** `feat: docker image, compose example, README, smoke test`.

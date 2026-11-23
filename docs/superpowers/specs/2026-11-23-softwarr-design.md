@@ -98,6 +98,8 @@ Frontend: React, Vite, TypeScript, Mantine, TanStack Query for server state, and
 
 Deployment is one Docker image. Port, data directory, and URL base are environment variables and need a restart to change. Everything else is set in the UI and stored in SQLite. The container mounts `/config` for the database, the download client's completed-downloads path, and the library path.
 
+The image is based on Alpine and follows the linuxserver convention: it starts as root, sets up a user from `PUID` and `PGID` (default 1000), applies `UMASK` (default 022), and drops to that user. Running as the same user as qBittorrent matters for hardlinks, because Linux's default `fs.protected_hardlinks=1` blocks linking files the process can't write. Containers started with `user:` skip the drop and run as given.
+
 ### Suggested packages
 
 - `auth`: local passwords, sessions, OIDC, setup and owner rules, password reset command
@@ -308,5 +310,4 @@ The UI follows the *arr look: dark theme, left sidebar, dense tables, settings s
 - The full list of archive and installer extensions served directly.
 - Webhook payload field names.
 - The logging library and log retention.
-- The Docker base image, and whether to support linuxserver-style PUID/PGID or run as a fixed non-root UID.
 - The test strategy. At minimum, unit tests for the request state machine, import, and auth rules. Integration tests against a real qBittorrent container are encouraged.
