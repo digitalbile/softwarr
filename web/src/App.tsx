@@ -12,9 +12,9 @@ import { LoginPage } from './pages/LoginPage'
 import { MyRequestsPage } from './pages/MyRequestsPage'
 import { ProfilePage } from './pages/ProfilePage'
 import { SearchPage } from './pages/SearchPage'
-import { SettingsPage } from './pages/SettingsPage'
+import { SettingsLayout } from './pages/settings/SettingsLayout'
 import { SetupPage } from './pages/SetupPage'
-import { SystemPage } from './pages/SystemPage'
+import { SystemPage } from './pages/admin/SystemPage'
 
 export function AppRoutes() {
   return (
@@ -33,7 +33,7 @@ export function AppRoutes() {
           <Route element={<RequireAdmin />}>
             <Route path="/admin/requests" element={<RequestsQueuePage />} />
             <Route path="/activity" element={<ActivityPage />} />
-            <Route path="/settings/*" element={<SettingsPage />} />
+            <Route path="/settings/*" element={<SettingsLayout />} />
             <Route path="/system" element={<SystemPage />} />
           </Route>
         </Route>

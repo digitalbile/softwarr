@@ -1,6 +1,6 @@
 import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
-import type { User } from '../api/types'
+import type { Settings, User } from '../api/types'
 
 export function makeUser(over: Partial<User> = {}): User {
   return {
@@ -14,6 +14,31 @@ export function makeUser(over: Partial<User> = {}): User {
     hasPassword: true,
     hasOidc: false,
     status: 'active',
+    ...over,
+  }
+}
+
+export function makeSettings(over: Partial<Settings> = {}): Settings {
+  return {
+    externalUrl: '',
+    apiKey: 'key123',
+    commentRequired: false,
+    defaultRetentionDays: 0,
+    stallHours: 24,
+    libraryRoot: '/library',
+    prowlarr: { url: '', apiKey: '', categories: [4050] },
+    oidc: {
+      enabled: false,
+      issuer: '',
+      clientId: '',
+      clientSecret: '',
+      buttonLabel: '',
+      scopes: ['openid', 'profile', 'email'],
+      autoProvision: false,
+      linkVerifiedEmail: false,
+      adminClaim: '',
+      adminValue: '',
+    },
     ...over,
   }
 }
