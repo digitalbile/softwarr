@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { api, ApiError } from '../../api/client'
+import { api, isConflict } from '../../api/client'
 
 // Runs an admin action on a request. A 409 means the request moved on
 // without us, so show the server's message and refetch.
@@ -13,7 +13,7 @@ export function useRequestAction() {
     try {
       await api(`/requests/${id}/${action}`, { method: 'POST', json })
     } catch (err) {
-      if (err instanceof ApiError && err.status === 409) setConflict(err.message)
+      if (isConflict(err)) setConflict(err.message)
       throw err
     } finally {
       await Promise.all([
@@ -22,9 +22,5 @@ export function useRequestAction() {
       ])
     }
   }
-  return { perform, conflict, clearConflict: () => setConflict('') }
-}
-
-export function isConflict(err: unknown) {
-  return err instanceof ApiError && err.status === 409
+  return { perform, conflict }
 }
