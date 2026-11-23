@@ -359,3 +359,19 @@ func TestAutoApproveNeedsLibraryRoot(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, Approved, r.Status)
 }
+
+func TestApproveReplacementInLibraryRejected(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	r, err := e.svc.Create(ctx, e.user, rel("a"), "")
+	require.NoError(t, err)
+	_, err = e.svc.db.Exec(`INSERT INTO library_items (display_title, release_name, release_key, folder, imported_at) VALUES ('b','b',?, '/library/b', 1)`, rel("b").Key())
+	require.NoError(t, err)
+	repl := rel("b")
+	_, err = e.svc.Approve(ctx, e.admin, r.ID, ApproveOpts{Replacement: &repl})
+	assert.ErrorIs(t, err, ErrInLibrary)
+	got, err := e.svc.Get(ctx, e.admin, r.ID)
+	require.NoError(t, err)
+	assert.Equal(t, Pending, got.Status)
+	assert.Equal(t, "a", got.Release.Title)
+}
