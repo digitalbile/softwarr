@@ -86,6 +86,17 @@ func (s *Service) checkClient(ctx context.Context, protocol string) error {
 	return nil
 }
 
+func (s *Service) checkNotInLibrary(ctx context.Context, key string) error {
+	rows, err := s.q.ListAvailableLibraryKeys(ctx, []string{key})
+	if err != nil {
+		return err
+	}
+	if len(rows) > 0 {
+		return ErrInLibrary
+	}
+	return nil
+}
+
 func (s *Service) Create(ctx context.Context, p auth.Principal, rel prowlarr.Release, comment string) (Request, error) {
 	if err := validateRelease(rel); err != nil {
 		return Request{}, err
@@ -102,12 +113,8 @@ func (s *Service) Create(ctx context.Context, p auth.Principal, rel prowlarr.Rel
 		return Request{}, err
 	}
 	key := rel.Key()
-	inLib, err := s.q.ListAvailableLibraryKeys(ctx, []string{key})
-	if err != nil {
+	if err := s.checkNotInLibrary(ctx, key); err != nil {
 		return Request{}, err
-	}
-	if len(inLib) > 0 {
-		return Request{}, ErrInLibrary
 	}
 	raw, err := json.Marshal(rel)
 	if err != nil {
@@ -166,6 +173,9 @@ func (s *Service) Approve(ctx context.Context, p auth.Principal, id int64, o App
 			return Request{}, err
 		}
 		rel = *o.Replacement
+		if err := s.checkNotInLibrary(ctx, rel.Key()); err != nil {
+			return Request{}, err
+		}
 		if replacement, err = json.Marshal(rel); err != nil {
 			return Request{}, err
 		}
