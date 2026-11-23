@@ -91,6 +91,7 @@ func run() error {
 	q := dbq.New(database)
 	st := settings.NewStore(q)
 
+	sseDone := make(chan struct{})
 	handler := httpapi.New(httpapi.Deps{
 		DB:       database,
 		Q:        q,
@@ -99,6 +100,7 @@ func run() error {
 		Sessions: auth.NewSessions(q, time.Now),
 		OIDC:     auth.NewOIDC(st, q, database, time.Now),
 		Broker:   events.NewBroker(),
+		Done:     sseDone,
 		URLBase:  cfg.URLBase,
 		Version:  version,
 		Now:      time.Now,
@@ -110,6 +112,7 @@ func run() error {
 	go func() {
 		defer close(drained)
 		<-ctx.Done()
+		close(sseDone) // end open SSE streams so Shutdown can drain
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		if err := srv.Shutdown(shutdownCtx); err != nil {

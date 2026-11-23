@@ -20,6 +20,8 @@ type Deps struct {
 	Sessions *auth.Sessions
 	OIDC     *auth.OIDC
 	Broker   *events.Broker
+	// Done, when closed, ends open SSE streams so server shutdown can drain.
+	Done <-chan struct{}
 	// PingInterval is the SSE keepalive period; zero means 25s.
 	PingInterval time.Duration
 	URLBase      string
