@@ -9,7 +9,9 @@ import (
 	"github.com/digitalbile/softwarr/internal/auth"
 	"github.com/digitalbile/softwarr/internal/db/dbq"
 	"github.com/digitalbile/softwarr/internal/events"
+	"github.com/digitalbile/softwarr/internal/health"
 	"github.com/digitalbile/softwarr/internal/library"
+	"github.com/digitalbile/softwarr/internal/logbuf"
 	"github.com/digitalbile/softwarr/internal/notify"
 	"github.com/digitalbile/softwarr/internal/prowlarr"
 	"github.com/digitalbile/softwarr/internal/requests"
@@ -27,6 +29,8 @@ type Deps struct {
 	Notify   *notify.Service
 	Requests *requests.Service
 	Library  *library.Service
+	Health   *health.Checker
+	Logs     *logbuf.Handler
 	// NewProwlarr builds a Prowlarr client; tests inject a short timeout.
 	NewProwlarr func(url, key string) *prowlarr.Client
 	// Done, when closed, ends open SSE streams so server shutdown can drain.
@@ -34,6 +38,8 @@ type Deps struct {
 	// PingInterval is the SSE keepalive period; zero means 25s.
 	PingInterval time.Duration
 	URLBase      string
+	DataDir      string
+	StartedAt    time.Time
 	Version      string
 	Now          func() time.Time
 }
@@ -71,6 +77,7 @@ func New(d Deps) http.Handler {
 	s.registerRequestRoutes(api)
 	s.registerActivityRoutes(api)
 	s.registerLibraryRoutes(api)
+	s.registerSystemRoutes(api)
 
 	inner := recoverer(s.authenticate(api))
 	if d.URLBase == "" {

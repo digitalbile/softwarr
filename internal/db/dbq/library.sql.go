@@ -119,6 +119,17 @@ func (q *Queries) InsertLibraryItem(ctx context.Context, arg InsertLibraryItemPa
 	return id, err
 }
 
+const latestTorrentImportMode = `-- name: LatestTorrentImportMode :one
+SELECT import_mode FROM library_items WHERE protocol = 'torrent' ORDER BY imported_at DESC, id DESC LIMIT 1
+`
+
+func (q *Queries) LatestTorrentImportMode(ctx context.Context) (string, error) {
+	row := q.db.QueryRowContext(ctx, latestTorrentImportMode)
+	var import_mode string
+	err := row.Scan(&import_mode)
+	return import_mode, err
+}
+
 const listAllAvailableLibraryFiles = `-- name: ListAllAvailableLibraryFiles :many
 SELECT f.item_id, f.rel_path, f.size FROM library_files f
 JOIN library_items li ON li.id = f.item_id
