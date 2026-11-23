@@ -3,7 +3,9 @@ package httpapi
 
 import (
 	"database/sql"
+	"io/fs"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/digitalbile/softwarr/internal/auth"
@@ -16,6 +18,7 @@ import (
 	"github.com/digitalbile/softwarr/internal/prowlarr"
 	"github.com/digitalbile/softwarr/internal/requests"
 	"github.com/digitalbile/softwarr/internal/settings"
+	"github.com/digitalbile/softwarr/web"
 )
 
 type Deps struct {
@@ -37,11 +40,13 @@ type Deps struct {
 	Done <-chan struct{}
 	// PingInterval is the SSE keepalive period; zero means 25s.
 	PingInterval time.Duration
-	URLBase      string
-	DataDir      string
-	StartedAt    time.Time
-	Version      string
-	Now          func() time.Time
+	// UI is the built frontend; nil means the embedded web/dist.
+	UI        fs.FS
+	URLBase   string
+	DataDir   string
+	StartedAt time.Time
+	Version   string
+	Now       func() time.Time
 }
 
 type server struct {
@@ -58,6 +63,13 @@ func New(d Deps) http.Handler {
 	}
 	if d.Broker == nil {
 		d.Broker = events.NewBroker()
+	}
+	if d.UI == nil {
+		ui, err := fs.Sub(web.Dist, "dist")
+		if err != nil {
+			panic(err) // the embedded path is a constant
+		}
+		d.UI = ui
 	}
 	s := &server{Deps: d}
 	api := http.NewServeMux()
@@ -79,7 +91,18 @@ func New(d Deps) http.Handler {
 	s.registerLibraryRoutes(api)
 	s.registerSystemRoutes(api)
 
-	inner := recoverer(s.authenticate(api))
+	api.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
+		writeError(w, http.StatusNotFound, "Not found.")
+	})
+
+	spa := spaHandler(d.UI, d.URLBase)
+	inner := recoverer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/api/") {
+			s.authenticate(api).ServeHTTP(w, r)
+			return
+		}
+		spa.ServeHTTP(w, r)
+	}))
 	if d.URLBase == "" {
 		return inner
 	}
