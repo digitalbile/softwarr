@@ -266,17 +266,26 @@ func (c *client) Add(ctx context.Context, req downloadclient.AddRequest) (string
 		return "", errors.New("qBittorrent says the torrent file is invalid")
 	}
 	if status != http.StatusOK {
+		// qBittorrent 5 answers a duplicate with 409; attach if it's there.
+		if c.has(ctx, id) {
+			return id, nil
+		}
 		return "", fmt.Errorf("qBittorrent answered with status %d when adding the torrent", status)
 	}
 	if addFailed(body) {
 		// Usually a duplicate: attach to the existing torrent if it is there.
-		it, gerr := c.Get(ctx, id)
-		if gerr == nil && it.State != downloadclient.StateMissing {
+		if c.has(ctx, id) {
 			return id, nil
 		}
 		return "", errors.New("qBittorrent did not accept the torrent")
 	}
 	return id, nil
+}
+
+// has reports whether qBittorrent already has the torrent with this hash.
+func (c *client) has(ctx context.Context, id string) bool {
+	it, err := c.Get(ctx, id)
+	return err == nil && it.State != downloadclient.StateMissing
 }
 
 // addFailed reads the add response: "Ok." or "Fails." on older versions, and a
