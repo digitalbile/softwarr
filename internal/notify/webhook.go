@@ -24,7 +24,7 @@ import (
 const webhookTimeout = 10 * time.Second
 
 var (
-	ErrNotFound   = errors.New("Webhook not found.")
+	ErrNotFound   = errors.New("That webhook doesn't exist.")
 	errBadURL     = errors.New("Enter a full http or https URL.")
 	errBadEvent   = errors.New("Unknown event type.")
 	errNameNeeded = errors.New("Enter a name.")
@@ -201,11 +201,13 @@ func (s *Service) body(ctx context.Context, e Event) []byte {
 		m["itemId"] = e.ItemID
 	}
 	if cfg, err := s.s.Get(ctx); err == nil && cfg.ExternalURL != "" {
+		// Link to pages the web app has: the item, else the admin queue,
+		// since webhooks go to admins.
 		switch {
-		case e.RequestID != 0:
-			m["url"] = fmt.Sprintf("%s/requests/%d", cfg.ExternalURL, e.RequestID)
 		case e.ItemID != 0:
 			m["url"] = fmt.Sprintf("%s/library/%d", cfg.ExternalURL, e.ItemID)
+		case e.RequestID != 0:
+			m["url"] = cfg.ExternalURL + "/admin/requests"
 		}
 	}
 	b, _ := json.Marshal(m)

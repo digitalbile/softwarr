@@ -148,7 +148,12 @@ func TestWebhookTestEndpoint(t *testing.T) {
 	require.Equal(t, false, res["ok"])
 	require.NotEmpty(t, res["error"])
 
-	require.Equal(t, http.StatusNotFound, ts.do("POST", "/api/v1/webhooks/999/test", nil).StatusCode)
+	resp := ts.do("POST", "/api/v1/webhooks/999/test", nil)
+	require.Equal(t, http.StatusNotFound, resp.StatusCode)
+	require.Equal(t, "That webhook doesn't exist.", errorBody(t, resp))
+	resp = ts.do("PUT", "/api/v1/webhooks/abc", map[string]any{})
+	require.Equal(t, http.StatusNotFound, resp.StatusCode)
+	require.Equal(t, "That webhook doesn't exist.", errorBody(t, resp))
 }
 
 func itoa(n int64) string { return strconv.FormatInt(n, 10) }
