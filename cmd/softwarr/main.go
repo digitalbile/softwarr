@@ -19,8 +19,10 @@ import (
 	"github.com/digitalbile/softwarr/internal/db/dbq"
 	_ "github.com/digitalbile/softwarr/internal/downloadclient/qbittorrent"
 	"github.com/digitalbile/softwarr/internal/events"
+	"github.com/digitalbile/softwarr/internal/health"
 	"github.com/digitalbile/softwarr/internal/httpapi"
 	"github.com/digitalbile/softwarr/internal/library"
+	"github.com/digitalbile/softwarr/internal/logbuf"
 	"github.com/digitalbile/softwarr/internal/notify"
 	"github.com/digitalbile/softwarr/internal/requests"
 	"github.com/digitalbile/softwarr/internal/settings"
@@ -79,6 +81,9 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("invalid config: %w", err)
 	}
+	logs := logbuf.New(1000, slog.NewTextHandler(os.Stderr, nil))
+	slog.SetDefault(slog.New(logs))
+	startedAt := time.Now()
 	slog.Info("starting softwarr", "version", version, "port", cfg.Port, "data_dir", cfg.DataDir, "url_base", cfg.URLBase)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -110,22 +115,32 @@ func run() error {
 		defer close(retentionDone)
 		librarySvc.RunRetention(ctx)
 	}()
+	checker := health.NewChecker(q, st, nil, nil, notifier, broker)
+	healthDone := make(chan struct{})
+	go func() {
+		defer close(healthDone)
+		checker.Loop(ctx, 5*time.Minute)
+	}()
 	sseDone := make(chan struct{})
 	handler := httpapi.New(httpapi.Deps{
-		DB:       database,
-		Q:        q,
-		Settings: st,
-		Users:    auth.NewUsers(database, q),
-		Sessions: auth.NewSessions(q, time.Now),
-		OIDC:     auth.NewOIDC(st, q, database, time.Now),
-		Broker:   broker,
-		Notify:   notifier,
-		Requests: requestSvc,
-		Library:  librarySvc,
-		Done:     sseDone,
-		URLBase:  cfg.URLBase,
-		Version:  version,
-		Now:      time.Now,
+		DB:        database,
+		Q:         q,
+		Settings:  st,
+		Users:     auth.NewUsers(database, q),
+		Sessions:  auth.NewSessions(q, time.Now),
+		OIDC:      auth.NewOIDC(st, q, database, time.Now),
+		Broker:    broker,
+		Notify:    notifier,
+		Requests:  requestSvc,
+		Library:   librarySvc,
+		Health:    checker,
+		Logs:      logs,
+		Done:      sseDone,
+		URLBase:   cfg.URLBase,
+		DataDir:   cfg.DataDir,
+		StartedAt: startedAt,
+		Version:   version,
+		Now:       time.Now,
 	})
 	srv := &http.Server{Addr: fmt.Sprintf(":%d", cfg.Port), Handler: handler}
 
@@ -145,9 +160,11 @@ func run() error {
 		stop()
 		<-workerDone
 		<-retentionDone
+		<-healthDone
 		return fmt.Errorf("server failed: %w", err)
 	}
 	<-drained
+	<-healthDone
 	<-retentionDone
 	<-workerDone // let an in-flight tick finish before the database closes
 	return nil
