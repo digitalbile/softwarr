@@ -116,7 +116,11 @@ export function RequestsQueuePage() {
           </Table>
         </Table.ScrollContainer>
       )}
-      <ApproveDialog request={approving} onClose={() => setApproving(null)} onApprove={(id, body) => perform(id, 'approve', body)} />
+      <ApproveDialog
+        request={approving && { id: approving.id, title: approving.release.title }}
+        onClose={() => setApproving(null)}
+        onApprove={(id, body) => perform(id, 'approve', body)}
+      />
       <DenyDialog request={denying} onClose={() => setDenying(null)} onDeny={(id, body) => perform(id, 'deny', body)} />
     </Stack>
   )

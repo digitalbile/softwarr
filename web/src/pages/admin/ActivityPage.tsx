@@ -3,12 +3,14 @@ import { Alert, Badge, Button, Group, Loader, Modal, Progress, Stack, Table, Tex
 import { useQuery } from '@tanstack/react-query'
 import { api, isConflict } from '../../api/client'
 import type { Activity } from '../../api/types'
+import { ApproveDialog } from '../../components/ApproveDialog'
 import { StatusBadge } from '../../components/StatusBadge'
 import { useRequestAction } from './useRequestAction'
 
 export function ActivityPage() {
   const { perform, conflict } = useRequestAction()
   const [abandoning, setAbandoning] = useState<Activity | null>(null)
+  const [replacing, setReplacing] = useState<Activity | null>(null)
   const [actionError, setActionError] = useState('')
   const list = useQuery({ queryKey: ['activity'], queryFn: () => api<Activity[]>('/activity') })
 
@@ -82,9 +84,19 @@ export function ActivityPage() {
                     <Table.Td>
                       <Group gap="xs" wrap="nowrap">
                         {a.status === 'failed' && (
-                          <Button size="compact-xs" onClick={() => run(a.requestId, 'retry')} aria-label={`Retry ${a.title}`}>
-                            Retry
-                          </Button>
+                          <>
+                            <Button size="compact-xs" onClick={() => run(a.requestId, 'retry')} aria-label={`Retry ${a.title}`}>
+                              Retry
+                            </Button>
+                            <Button
+                              size="compact-xs"
+                              variant="default"
+                              onClick={() => setReplacing(a)}
+                              aria-label={`Use a different release for ${a.title}`}
+                            >
+                              Use a different release
+                            </Button>
+                          </>
                         )}
                         {['approved', 'downloading', 'failed'].includes(a.status) && (
                           <Button size="compact-xs" variant="default" onClick={() => setAbandoning(a)} aria-label={`Abandon ${a.title}`}>
@@ -100,6 +112,12 @@ export function ActivityPage() {
           </Table>
         </Table.ScrollContainer>
       )}
+      <ApproveDialog
+        mode="replace"
+        request={replacing && { id: replacing.requestId, title: replacing.title }}
+        onClose={() => setReplacing(null)}
+        onApprove={(id, body) => perform(id, 'approve', body)}
+      />
       <Modal opened={abandoning !== null} onClose={() => setAbandoning(null)} title="Abandon this download" centered>
         <Stack gap="sm">
           <Text>Stop tracking this download? The torrent stays in the download client.</Text>
