@@ -61,8 +61,18 @@ URL="$(base_url "$C1")"
 wait_ping "$URL" || { docker logs "$C1" >&2; fail "softwarr did not answer /api/v1/ping"; }
 echo "ping ok"
 
-docker logs "$C1" 2>&1 | grep -q "softwarr running as uid=$UID_GID gid=$UID_GID umask=022" \
-	|| fail "startup line missing"
+# Capture logs before matching: with pipefail, `grep -q` closing the pipe early
+# can make a successful match look like a failure.
+STARTUP_LINE="softwarr running as uid=$UID_GID gid=$UID_GID umask=022"
+found=""
+for _ in $(seq 1 20); do
+	LOGS="$(docker logs "$C1" 2>&1 || true)"
+	case "$LOGS" in
+		*"$STARTUP_LINE"*) found=1; break ;;
+	esac
+	sleep 0.5
+done
+[ -n "$found" ] || { echo "$LOGS" >&2; fail "startup line missing"; }
 
 JAR="$(mktemp)"
 PASSWORD="smoke-test-password-1"
