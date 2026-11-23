@@ -197,7 +197,7 @@ The admin queue shows each pending request's release, size, indexer, requester, 
 
 ### Stuck downloads
 
-- Nothing times out automatically. The Activity page marks a download as stalled after a set period with no progress (24 hours by default), and admins get one notification about it.
+- Nothing times out automatically. The Activity page marks a download as stalled after a set period with no progress (24 hours by default). There is no notification for stalled downloads.
 - An admin can abandon a request that is `approved`, `downloading`, or `failed`. It becomes `abandoned`, polling stops, and the release can be requested again. The torrent stays in the client, and removing it is up to the admin in qBittorrent.
 
 ## Download clients
@@ -251,7 +251,7 @@ Every signed-in user can browse, search, filter, and download library items. Adm
 
 - In-app notifications appear in a per-user list under a bell icon, delivered live over SSE.
   - Requesters hear about approval, denial (with the reason), failure, and availability.
-  - Admins hear about new pending requests, failed downloads or imports, stalled downloads, and health warnings.
+  - Admins hear about new pending requests, failed downloads or imports, and health warnings.
 - Admins can add one or more webhooks, each subscribed to chosen events: `request.created`, `request.approved`, `request.denied`, `request.failed`, `item.available`, `item.expired`, `health.warning`. Each event is a JSON POST with the event type, a timestamp, and the relevant request, item, and user fields. An optional shared secret adds an HMAC-SHA256 signature header. Each webhook has a Test button.
 
 ## UI
