@@ -194,6 +194,20 @@ func (q *Queries) SetUserPassword(ctx context.Context, arg SetUserPasswordParams
 	return err
 }
 
+const setUserTemporaryPassword = `-- name: SetUserTemporaryPassword :exec
+UPDATE users SET password_hash = ?, must_change_password = 1 WHERE id = ?
+`
+
+type SetUserTemporaryPasswordParams struct {
+	PasswordHash string `json:"password_hash"`
+	ID           int64  `json:"id"`
+}
+
+func (q *Queries) SetUserTemporaryPassword(ctx context.Context, arg SetUserTemporaryPasswordParams) error {
+	_, err := q.db.ExecContext(ctx, setUserTemporaryPassword, arg.PasswordHash, arg.ID)
+	return err
+}
+
 const updateUserFields = `-- name: UpdateUserFields :exec
 UPDATE users SET is_admin = ?, auto_approve = ?, status = ?, email = ? WHERE id = ?
 `

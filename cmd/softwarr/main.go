@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -23,10 +24,49 @@ import (
 var version = "dev"
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "reset-password" {
+		if err := resetPasswordMain(); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
 	if err := run(); err != nil {
 		slog.Error("softwarr failed", "err", err)
 		os.Exit(1)
 	}
+}
+
+func resetPasswordMain() error {
+	cfg, err := config.FromEnv(os.Getenv)
+	if err != nil {
+		return fmt.Errorf("invalid config: %w", err)
+	}
+	return resetPasswordCmd(context.Background(), cfg, os.Stdout)
+}
+
+// resetPasswordCmd resets the owner's password and prints the temporary one.
+// It does not start the server.
+func resetPasswordCmd(ctx context.Context, cfg config.Config, stdout io.Writer) error {
+	database, err := db.Open(filepath.Join(cfg.DataDir, "softwarr.db"))
+	if err != nil {
+		return fmt.Errorf("open database: %w", err)
+	}
+	defer database.Close()
+	if err := db.Migrate(ctx, database); err != nil {
+		return fmt.Errorf("migrate database: %w", err)
+	}
+	q := dbq.New(database)
+	pw, err := auth.ResetOwnerPassword(ctx, database, q)
+	if err != nil {
+		return err
+	}
+	owner, err := auth.NewUsers(database, q).Owner(ctx)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(stdout, "The owner password has been reset.\nUsername: %s\nTemporary password: %s\nYou'll be asked to choose a new password after signing in.\n", owner.Username, pw)
+	return nil
 }
 
 func run() error {

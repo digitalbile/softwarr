@@ -29,3 +29,6 @@ SELECT EXISTS (SELECT 1 FROM user_identities WHERE user_id = ?);
 
 -- name: GetOwner :one
 SELECT * FROM users WHERE is_owner = 1;
+
+-- name: SetUserTemporaryPassword :exec
+UPDATE users SET password_hash = ?, must_change_password = 1 WHERE id = ?;
