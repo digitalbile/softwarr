@@ -32,7 +32,15 @@ function peers(r: SearchResult) {
   return ''
 }
 
-export function ReleaseTable({ results, onSelect }: { results: SearchResult[]; onSelect(result: SearchResult): void }) {
+interface Props {
+  results: SearchResult[]
+  onSelect(result: SearchResult): void
+  // Which rows get the action button. Defaults to requestable ones.
+  selectable?(result: SearchResult): boolean
+  actionLabel?: string
+}
+
+export function ReleaseTable({ results, onSelect, selectable = (r) => r.status === 'requestable', actionLabel = 'Request' }: Props) {
   // Newest first by default, so a larger age timestamp sorts first.
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: 'age', dir: -1 })
   const rows = useMemo(() => {
@@ -73,9 +81,9 @@ export function ReleaseTable({ results, onSelect }: { results: SearchResult[]; o
               <Table.Td>{formatAge(r.publishDate)}</Table.Td>
               <Table.Td>{peers(r)}</Table.Td>
               <Table.Td>
-                {r.status === 'requestable' ? (
-                  <Button size="compact-xs" onClick={() => onSelect(r)} aria-label={`Request ${r.title}`}>
-                    Request
+                {selectable(r) ? (
+                  <Button size="compact-xs" onClick={() => onSelect(r)} aria-label={`${actionLabel} ${r.title}`}>
+                    {actionLabel}
                   </Button>
                 ) : r.status === 'available' && r.libraryItemId != null ? (
                   <Link to={`/library/${r.libraryItemId}`} style={{ textDecoration: 'none' }}>
