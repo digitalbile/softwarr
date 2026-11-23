@@ -47,9 +47,10 @@ function AdminEditor({ item }: { item: LibraryItem }) {
   })
   const remove = useMutation({
     mutationFn: () => api(`/library/${item.id}`, { method: 'DELETE' }),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['library'] })
+    onSuccess: () => {
+      queryClient.removeQueries({ queryKey: ['library', 'item', String(item.id)] })
       navigate('/library')
+      queryClient.invalidateQueries({ queryKey: ['library'] })
     },
   })
 
@@ -111,12 +112,26 @@ function AdminEditor({ item }: { item: LibraryItem }) {
           </Button>
         </Group>
       </Stack>
-      <Modal opened={confirming} onClose={() => setConfirming(false)} title="Delete item" size="sm">
+      <Modal
+        opened={confirming}
+        onClose={() => {
+          setConfirming(false)
+          remove.reset()
+        }}         title="Delete item"
+        size="sm"
+      >
         <Stack gap="md">
           <Text size="sm">Delete this item from the library? Seeding files in the download client aren't affected.</Text>
           {remove.error && <Alert color="red">{remove.error.message}</Alert>}
           <Group justify="flex-end">
-            <Button variant="default" size="xs" onClick={() => setConfirming(false)}>
+            <Button
+              variant="default"
+              size="xs"
+              onClick={() => {
+                setConfirming(false)
+                remove.reset()
+              }}
+            >
               Cancel
             </Button>
             <Button color="red" size="xs" loading={remove.isPending} onClick={() => remove.mutate()}>

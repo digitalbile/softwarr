@@ -105,7 +105,9 @@ test('delete asks for confirmation then returns to the library', async () => {
   let deleted = false
   server.use(
     admin(),
-    http.get('*/api/v1/library/:id', () => HttpResponse.json(item({ id: 3 }))),
+    http.get('*/api/v1/library/:id', () =>
+      deleted ? HttpResponse.json({ error: 'gone' }, { status: 404 }) : HttpResponse.json(item({ id: 3 })),
+    ),
     http.get('*/api/v1/library', () => HttpResponse.json([])),
     http.delete('*/api/v1/library/:id', () => {
       deleted = true
@@ -119,6 +121,7 @@ test('delete asks for confirmation then returns to the library', async () => {
   await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Delete' }))
   await screen.findByText('Nothing in the library yet.')
   expect(deleted).toBe(true)
+  expect(screen.queryByText("That library item doesn't exist.")).not.toBeInTheDocument()
 })
 
 test('non-admin sees details but no edit or delete controls', async () => {
