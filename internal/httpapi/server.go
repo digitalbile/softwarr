@@ -62,6 +62,7 @@ func New(d Deps) http.Handler {
 	s.registerNotificationRoutes(api)
 	s.registerWebhookRoutes(api)
 	s.registerSearchRoutes(api)
+	s.registerDownloadClientRoutes(api)
 
 	inner := recoverer(s.authenticate(api))
 	if d.URLBase == "" {

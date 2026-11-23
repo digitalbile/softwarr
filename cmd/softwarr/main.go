@@ -17,6 +17,7 @@ import (
 	"github.com/digitalbile/softwarr/internal/config"
 	"github.com/digitalbile/softwarr/internal/db"
 	"github.com/digitalbile/softwarr/internal/db/dbq"
+	_ "github.com/digitalbile/softwarr/internal/downloadclient/qbittorrent"
 	"github.com/digitalbile/softwarr/internal/events"
 	"github.com/digitalbile/softwarr/internal/httpapi"
 	"github.com/digitalbile/softwarr/internal/notify"
