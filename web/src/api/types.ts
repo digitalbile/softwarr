@@ -12,6 +12,15 @@ export interface User {
   hasPassword: boolean
   hasOidc: boolean
   status: string
+  // Only on GET /auth/me and login.
+  commentRequired?: boolean
+}
+
+export interface Indexer {
+  id: number
+  name: string
+  protocol: string
+  enabled: boolean
 }
 
 export interface ProwlarrSettings {

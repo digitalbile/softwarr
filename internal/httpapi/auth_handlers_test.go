@@ -286,3 +286,26 @@ func TestLogoutSendsOneSessionCookie(t *testing.T) {
 	require.Len(t, cs, 1)
 	assert.Equal(t, -1, cs[0].MaxAge)
 }
+
+func TestMeAndLoginIncludeCommentRequired(t *testing.T) {
+	ts := newTestServer(t)
+	ts.loginAsOwner()
+
+	resp := ts.do("GET", "/api/v1/auth/me", nil)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	me := decode[map[string]any](t, resp)
+	assert.Equal(t, false, me["commentRequired"])
+
+	st, err := ts.Deps.Settings.Get(context.Background())
+	require.NoError(t, err)
+	st.CommentRequired = true
+	require.NoError(t, ts.Deps.Settings.Save(context.Background(), st))
+
+	resp = ts.do("GET", "/api/v1/auth/me", nil)
+	me = decode[map[string]any](t, resp)
+	assert.Equal(t, true, me["commentRequired"])
+
+	resp = ts.newClient().do("POST", "/api/v1/auth/login", map[string]string{"username": "owner", "password": testPassword})
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.Equal(t, true, decode[map[string]any](t, resp)["commentRequired"])
+}
