@@ -23,6 +23,9 @@ var (
 	// ErrUnsafePath is returned when a stored folder or file path resolves
 	// outside the place it must live in. Nothing is read or removed.
 	ErrUnsafePath = errors.New("library: path is outside the library")
+	// ErrFolderMissing means the item's folder isn't on disk, most likely
+	// because the library volume isn't mounted. The item is left as it is.
+	ErrFolderMissing = errors.New("The library folder for this item is missing. Check that the library path is mounted.")
 )
 
 // File is one file of an item, relative to the item's folder.
@@ -268,8 +271,16 @@ func within(base, p string) bool {
 	return rel != "." && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && !filepath.IsAbs(rel)
 }
 
+// removeFolder deletes an item's library folder. A folder that isn't there is
+// an error, not a success: os.RemoveAll would report nothing wrong, and the
+// item would be marked gone while an unmounted volume still holds its files.
 func (s *Service) removeFolder(ctx context.Context, folder string) error {
 	if err := s.checkFolder(ctx, folder); err != nil {
+		return err
+	}
+	if _, err := os.Lstat(folder); errors.Is(err, os.ErrNotExist) {
+		return ErrFolderMissing
+	} else if err != nil {
 		return err
 	}
 	return os.RemoveAll(folder)

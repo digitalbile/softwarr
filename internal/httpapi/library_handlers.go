@@ -26,6 +26,8 @@ func writeLibraryError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusBadRequest, err.Error())
 	case errors.Is(err, library.ErrFilesMissing):
 		writeError(w, http.StatusGone, err.Error())
+	case errors.Is(err, library.ErrFolderMissing):
+		writeError(w, http.StatusConflict, err.Error())
 	default:
 		serverError(w, err)
 	}

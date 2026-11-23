@@ -211,6 +211,28 @@ func TestDeleteRemovesFolderAndMarksDeleted(t *testing.T) {
 	assert.ErrorIs(t, err, ErrNotFound)
 }
 
+func TestDeleteAndRetentionKeepItemWhenFolderMissing(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	setDefaultDays(t, e, 1)
+	id := e.addItem(t, "Item", map[string]string{"a.txt": "a"})
+	// As if the library volume weren't mounted.
+	require.NoError(t, os.RemoveAll(filepath.Join(e.root, "Item")))
+
+	err := e.svc.Delete(ctx, id)
+	require.ErrorIs(t, err, ErrFolderMissing)
+	assert.Equal(t, "The library folder for this item is missing. Check that the library path is mounted.", err.Error())
+
+	*e.clock = e.now.Add(48 * time.Hour)
+	n, err := e.svc.ApplyRetention(ctx)
+	require.NoError(t, err)
+	assert.Zero(t, n)
+
+	var status string
+	require.NoError(t, e.db.QueryRow("SELECT status FROM library_items WHERE id = ?", id).Scan(&status))
+	assert.Equal(t, "available", status)
+}
+
 func TestUpdateTitleAndRetention(t *testing.T) {
 	e := newEnv(t)
 	ctx := context.Background()
