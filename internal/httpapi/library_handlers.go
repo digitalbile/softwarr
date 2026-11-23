@@ -80,7 +80,9 @@ func (s *server) handleDownloadLibraryItem(w http.ResponseWriter, r *http.Reques
 	if err := s.Library.Download(w, r, it); err != nil {
 		if errors.Is(err, library.ErrAborted) {
 			slog.Warn("library download aborted", "id", id, "err", err)
-			return
+			// Reset the connection so the client sees a failed download, not
+			// a complete-looking response with a broken zip.
+			panic(http.ErrAbortHandler)
 		}
 		writeLibraryError(w, err)
 	}

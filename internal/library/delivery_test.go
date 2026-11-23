@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -155,4 +156,57 @@ func TestDownloadCounting(t *testing.T) {
 	e.download(t, multi, "GET", nil)
 	n, _ = e.count(t, multi)
 	assert.Equal(t, 1, n)
+}
+
+func TestServeSymlinkInFolderRefused(t *testing.T) {
+	e := newEnv(t)
+	secret := filepath.Join(t.TempDir(), "secret.txt")
+	require.NoError(t, os.WriteFile(secret, []byte("s"), 0o644))
+	id := e.addItem(t, "Link", map[string]string{"a.txt": "a"})
+	p := filepath.Join(e.root, "Link", "a.txt")
+	require.NoError(t, os.Remove(p))
+	require.NoError(t, os.Symlink(secret, p))
+	it, err := e.svc.Get(context.Background(), id)
+	require.NoError(t, err)
+	rec := httptest.NewRecorder()
+	err = e.svc.Download(rec, httptest.NewRequest("GET", "/dl", nil), it)
+	assert.ErrorIs(t, err, ErrFilesMissing)
+	assert.Zero(t, rec.Body.Len())
+}
+
+func TestZipFileVanishingMidStreamResetsConnection(t *testing.T) {
+	e := newEnv(t)
+	id := e.addItem(t, "Race", map[string]string{"a.txt": "a", "b.txt": "b"})
+	it, err := e.svc.Get(context.Background(), id)
+	require.NoError(t, err)
+	testHookAfterStat = func() { os.Remove(filepath.Join(e.root, "Race", "b.txt")) }
+	t.Cleanup(func() { testHookAfterStat = nil })
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := e.svc.Download(w, r, it); errors.Is(err, ErrAborted) {
+			panic(http.ErrAbortHandler)
+		}
+	}))
+	defer srv.Close()
+	// No keep-alive, so the transport cannot retry the request.
+	client := &http.Client{Transport: &http.Transport{DisableKeepAlives: true}}
+	resp, err := client.Get(srv.URL)
+	if err == nil {
+		_, err = io.ReadAll(resp.Body)
+		resp.Body.Close()
+	}
+	assert.Error(t, err, "the client must see a failed transfer")
+}
+
+func TestZipFirstFileVanishingGivesFilesMissing(t *testing.T) {
+	e := newEnv(t)
+	id := e.addItem(t, "Race1", map[string]string{"a.txt": "a"})
+	it, err := e.svc.Get(context.Background(), id)
+	require.NoError(t, err)
+	testHookAfterStat = func() { os.Remove(filepath.Join(e.root, "Race1", "a.txt")) }
+	t.Cleanup(func() { testHookAfterStat = nil })
+	rec := httptest.NewRecorder()
+	err = e.svc.Download(rec, httptest.NewRequest("GET", "/dl", nil), it)
+	assert.ErrorIs(t, err, ErrFilesMissing)
+	assert.Zero(t, rec.Body.Len())
 }
