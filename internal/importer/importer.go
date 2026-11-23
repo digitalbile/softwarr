@@ -44,6 +44,9 @@ var ErrUnsafePath = errors.New("unsafe file path in download")
 // link is replaced in tests.
 var link = os.Link
 
+// rename is replaced in tests.
+var rename = os.Rename
+
 type plan struct {
 	rel  []string // source segments
 	dest []string // sanitized destination segments (common root stripped)
@@ -185,16 +188,27 @@ func Import(ctx context.Context, src Source, libraryRoot, releaseName string) (r
 	if err != nil {
 		return Result{}, err
 	}
-	defer func() {
-		if err != nil {
-			os.RemoveAll(folder) // only the folder this call created
-		}
-	}()
-
 	mode := ModeHardlink
 	if src.Protocol == "usenet" {
 		mode = ModeMove
 	}
+	type moved struct{ from, to string }
+	var movedFiles []moved
+	defer func() {
+		if err == nil {
+			return
+		}
+		// Moved files are the only copy outside the library: put them back
+		// before removing the folder, and keep the folder if that fails.
+		for i := len(movedFiles) - 1; i >= 0; i-- {
+			m := movedFiles[i]
+			if rerr := rename(m.to, m.from); rerr != nil {
+				err = fmt.Errorf("%w; could not restore moved file %q, left in %q", err, m.from, folder)
+				return
+			}
+		}
+		os.RemoveAll(folder) // only the folder this call created
+	}()
 	result := Result{Folder: folder}
 	for i, p := range plans {
 		if err = ctx.Err(); err != nil {
@@ -209,7 +223,9 @@ func Import(ctx context.Context, src Source, libraryRoot, releaseName string) (r
 		}
 		switch mode {
 		case ModeMove:
-			err = os.Rename(sources[i], dst)
+			if err = rename(sources[i], dst); err == nil {
+				movedFiles = append(movedFiles, moved{sources[i], dst})
+			}
 		case ModeHardlink:
 			err = link(sources[i], dst)
 			if err != nil && isCrossDevice(err) {

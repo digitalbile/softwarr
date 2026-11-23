@@ -197,3 +197,46 @@ func TestImportUsenetMoves(t *testing.T) {
 	assert.NoFileExists(t, filepath.Join(src.BaseDir, "a.nzbout"))
 	assert.FileExists(t, filepath.Join(res.Folder, "a.nzbout"))
 }
+
+func TestImportMoveFailureRestoresMovedFiles(t *testing.T) {
+	orig := rename
+	t.Cleanup(func() { rename = orig })
+	calls := 0
+	rename = func(o, n string) error {
+		calls++
+		if calls == 2 {
+			return os.ErrPermission
+		}
+		return os.Rename(o, n)
+	}
+	src, lib := setup(t, map[string]string{"a.bin": "first", "b.bin": "second"})
+	src.Protocol = "usenet"
+	_, err := Import(context.Background(), src, lib, "App")
+	require.Error(t, err)
+	for n, c := range map[string]string{"a.bin": "first", "b.bin": "second"} {
+		b, rerr := os.ReadFile(filepath.Join(src.BaseDir, n))
+		require.NoError(t, rerr)
+		assert.Equal(t, c, string(b))
+	}
+	ents, _ := os.ReadDir(lib)
+	assert.Empty(t, ents)
+}
+
+func TestImportMoveRestoreFailureKeepsFolder(t *testing.T) {
+	orig := rename
+	t.Cleanup(func() { rename = orig })
+	calls := 0
+	rename = func(o, n string) error {
+		calls++
+		if calls >= 2 {
+			return os.ErrPermission
+		}
+		return os.Rename(o, n)
+	}
+	src, lib := setup(t, map[string]string{"a.bin": "first", "b.bin": "second"})
+	src.Protocol = "usenet"
+	_, err := Import(context.Background(), src, lib, "App")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), filepath.Join(lib, "App"))
+	assert.FileExists(t, filepath.Join(lib, "App", "a.bin"))
+}
