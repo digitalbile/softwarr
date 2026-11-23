@@ -30,18 +30,19 @@ type fakeQbit struct {
 	t   *testing.T
 	srv *httptest.Server
 
-	mu        sync.Mutex
-	sids      map[string]bool
-	logins    int
-	torrents  map[string]*fakeTorrent
-	badLogin  bool
-	badSID    bool // logins succeed but the issued SID is never valid
-	paths     []string
-	nextSID   int
-	lastAdd   map[string]string
-	lastFile  []byte
-	addJSON   bool
-	infoCalls int
+	mu           sync.Mutex
+	sids         map[string]bool
+	logins       int
+	torrents     map[string]*fakeTorrent
+	badLogin     bool
+	badSID       bool // logins succeed but the issued SID is never valid
+	paths        []string
+	nextSID      int
+	lastAdd      map[string]string
+	lastFile     []byte
+	addJSON      bool
+	forceAddFail bool
+	infoCalls    int
 }
 
 func newFakeQbit(t *testing.T) *fakeQbit {
@@ -115,7 +116,15 @@ func (f *fakeQbit) handle(w http.ResponseWriter, r *http.Request) {
 }
 
 func (f *fakeQbit) add(w http.ResponseWriter, r *http.Request) {
-	require.NoError(f.t, r.ParseMultipartForm(1<<20))
+	if f.forceAddFail {
+		_, _ = w.Write([]byte("Fails."))
+		return
+	}
+	if err := r.ParseMultipartForm(1 << 20); err != nil {
+		f.t.Errorf("parse multipart: %v", err)
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
 	f.lastAdd = map[string]string{}
 	for k, v := range r.MultipartForm.Value {
 		f.lastAdd[k] = v[0]
@@ -123,7 +132,11 @@ func (f *fakeQbit) add(w http.ResponseWriter, r *http.Request) {
 	var hash string
 	if fh := r.MultipartForm.File["torrents"]; len(fh) > 0 {
 		file, err := fh[0].Open()
-		require.NoError(f.t, err)
+		if err != nil {
+			f.t.Errorf("open upload: %v", err)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
 		defer file.Close()
 		buf := make([]byte, fh[0].Size)
 		_, _ = file.Read(buf)
@@ -136,7 +149,11 @@ func (f *fakeQbit) add(w http.ResponseWriter, r *http.Request) {
 	} else {
 		var err error
 		hash, err = torrentfile.ParseMagnet(f.lastAdd["urls"])
-		require.NoError(f.t, err)
+		if err != nil {
+			f.t.Errorf("bad magnet: %v", err)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
 	}
 	if _, dup := f.torrents[hash]; dup {
 		_, _ = w.Write([]byte("Fails."))
@@ -245,19 +262,16 @@ func TestQbitAddDuplicateReattaches(t *testing.T) {
 
 func TestQbitAddFailsAndNotPresentIsError(t *testing.T) {
 	f := newFakeQbit(t)
-	// Fake answers Fails. for duplicates only; simulate by pre-seeding then removing before Get.
+	f.forceAddFail = true
 	c := f.client(t, nil)
 	hash := strings.Repeat("ef", 20)
-	f.torrents[hash] = &fakeTorrent{Hash: hash}
-	f.srv.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/api/v2/torrents/add" {
-			_, _ = w.Write([]byte("Fails."))
-			return
-		}
-		w.WriteHeader(http.StatusForbidden)
-	})
 	_, err := c.Add(context.Background(), downloadclient.AddRequest{MagnetURI: "magnet:?xt=urn:btih:" + hash})
 	require.Error(t, err)
+	assert.Contains(t, err.Error(), "did not accept the torrent")
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	assert.Equal(t, 1, f.infoCalls, "Add should check whether the torrent is already there")
+	assert.Empty(t, f.torrents)
 }
 
 func TestQbitGetCompletedStates(t *testing.T) {

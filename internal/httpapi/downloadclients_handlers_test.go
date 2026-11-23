@@ -152,3 +152,15 @@ func TestDownloadClientTestEndpoint(t *testing.T) {
 	b["id"] = created.ID
 	assert.True(t, decode[result](t, ts.do("POST", "/api/v1/downloadclients/test", b)).OK)
 }
+
+func TestDownloadClientNotFoundMessage(t *testing.T) {
+	ts := newTestServer(t)
+	ts.loginAsOwner()
+	for _, path := range []string{"/api/v1/downloadclients/999", "/api/v1/downloadclients/abc"} {
+		for _, method := range []string{"PUT", "DELETE"} {
+			resp := ts.do(method, path, validClient())
+			assert.Equal(t, http.StatusNotFound, resp.StatusCode, method+" "+path)
+			assert.Equal(t, "That download client doesn't exist.", errorBody(t, resp))
+		}
+	}
+}
