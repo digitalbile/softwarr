@@ -88,13 +88,15 @@ func run() error {
 		return fmt.Errorf("migrate database: %w", err)
 	}
 	q := dbq.New(database)
+	st := settings.NewStore(q)
 
 	handler := httpapi.New(httpapi.Deps{
 		DB:       database,
 		Q:        q,
-		Settings: settings.NewStore(q),
+		Settings: st,
 		Users:    auth.NewUsers(database, q),
 		Sessions: auth.NewSessions(q, time.Now),
+		OIDC:     auth.NewOIDC(st, q, database, time.Now),
 		URLBase:  cfg.URLBase,
 		Version:  version,
 		Now:      time.Now,

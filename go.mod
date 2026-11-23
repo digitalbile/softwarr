@@ -3,9 +3,12 @@ module github.com/digitalbile/softwarr
 go 1.27.3
 
 require (
+	github.com/coreos/go-oidc/v3 v3.21.0
+	github.com/oauth2-proxy/mockoidc v0.0.0-20261103160011-e06ed0b7cb7f
 	github.com/pressly/goose/v3 v3.30.1
 	github.com/stretchr/testify v1.12.1
 	golang.org/x/crypto v0.59.0
+	golang.org/x/oauth2 v0.38.0
 	modernc.org/sqlite v1.63.0
 )
 
@@ -18,7 +21,9 @@ require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/dustin/go-humanize v1.1.0 // indirect
 	github.com/fatih/structtag v1.2.0 // indirect
+	github.com/go-jose/go-jose/v4 v4.1.8 // indirect
 	github.com/go-sql-driver/mysql v1.10.1 // indirect
+	github.com/golang-jwt/jwt/v5 v5.3.1 // indirect
 	github.com/google/cel-go v0.28.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
