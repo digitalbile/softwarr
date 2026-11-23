@@ -9,6 +9,7 @@ import (
 	"github.com/digitalbile/softwarr/internal/auth"
 	"github.com/digitalbile/softwarr/internal/db/dbq"
 	"github.com/digitalbile/softwarr/internal/events"
+	"github.com/digitalbile/softwarr/internal/library"
 	"github.com/digitalbile/softwarr/internal/notify"
 	"github.com/digitalbile/softwarr/internal/prowlarr"
 	"github.com/digitalbile/softwarr/internal/requests"
@@ -25,6 +26,7 @@ type Deps struct {
 	Broker   *events.Broker
 	Notify   *notify.Service
 	Requests *requests.Service
+	Library  *library.Service
 	// NewProwlarr builds a Prowlarr client; tests inject a short timeout.
 	NewProwlarr func(url, key string) *prowlarr.Client
 	// Done, when closed, ends open SSE streams so server shutdown can drain.
@@ -68,6 +70,7 @@ func New(d Deps) http.Handler {
 	s.registerPathMappingRoutes(api)
 	s.registerRequestRoutes(api)
 	s.registerActivityRoutes(api)
+	s.registerLibraryRoutes(api)
 
 	inner := recoverer(s.authenticate(api))
 	if d.URLBase == "" {

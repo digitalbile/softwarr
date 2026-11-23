@@ -20,6 +20,7 @@ import (
 	_ "github.com/digitalbile/softwarr/internal/downloadclient/qbittorrent"
 	"github.com/digitalbile/softwarr/internal/events"
 	"github.com/digitalbile/softwarr/internal/httpapi"
+	"github.com/digitalbile/softwarr/internal/library"
 	"github.com/digitalbile/softwarr/internal/notify"
 	"github.com/digitalbile/softwarr/internal/requests"
 	"github.com/digitalbile/softwarr/internal/settings"
@@ -103,6 +104,12 @@ func run() error {
 		defer close(workerDone)
 		worker.Run(ctx, 15*time.Second)
 	}()
+	librarySvc := library.NewService(q, st, notifier, broker, time.Now)
+	retentionDone := make(chan struct{})
+	go func() {
+		defer close(retentionDone)
+		librarySvc.RunRetention(ctx)
+	}()
 	sseDone := make(chan struct{})
 	handler := httpapi.New(httpapi.Deps{
 		DB:       database,
@@ -114,6 +121,7 @@ func run() error {
 		Broker:   broker,
 		Notify:   notifier,
 		Requests: requestSvc,
+		Library:  librarySvc,
 		Done:     sseDone,
 		URLBase:  cfg.URLBase,
 		Version:  version,
@@ -136,9 +144,11 @@ func run() error {
 	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		stop()
 		<-workerDone
+		<-retentionDone
 		return fmt.Errorf("server failed: %w", err)
 	}
 	<-drained
+	<-retentionDone
 	<-workerDone // let an in-flight tick finish before the database closes
 	return nil
 }
