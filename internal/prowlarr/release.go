@@ -1,13 +1,16 @@
 package prowlarr
 
 import (
+	"encoding/json"
 	"strings"
 	"time"
 
 	"github.com/digitalbile/softwarr/internal/torrentfile"
 )
 
-// Release is one search result from Prowlarr.
+// Release is one search result from Prowlarr. Its download links often carry
+// an indexer API key or a tracker passkey, so they never appear in its JSON;
+// use MarshalStored for the database and sealed tokens.
 type Release struct {
 	GUID        string    `json:"guid"`
 	Title       string    `json:"title"`
@@ -19,10 +22,34 @@ type Release struct {
 	Seeders     *int      `json:"seeders"`
 	Leechers    *int      `json:"leechers"`
 	Grabs       *int      `json:"grabs"`
-	DownloadURL string    `json:"downloadUrl"`
-	MagnetURL   string    `json:"magnetUrl"`
+	DownloadURL string    `json:"-"`
+	MagnetURL   string    `json:"-"`
 	InfoHash    string    `json:"infoHash"`
 	Categories  []int     `json:"categories"`
+}
+
+// stored is a Release with its download links, as kept server side.
+type stored struct {
+	Release
+	DownloadURL string `json:"downloadUrl"`
+	MagnetURL   string `json:"magnetUrl"`
+}
+
+// MarshalStored encodes r with its download links, for the database and
+// sealed tokens. The result must never be sent to a browser.
+func MarshalStored(r Release) ([]byte, error) {
+	return json.Marshal(stored{Release: r, DownloadURL: r.DownloadURL, MagnetURL: r.MagnetURL})
+}
+
+// UnmarshalStored decodes a release written by MarshalStored.
+func UnmarshalStored(b []byte) (Release, error) {
+	var s stored
+	if err := json.Unmarshal(b, &s); err != nil {
+		return Release{}, err
+	}
+	r := s.Release
+	r.DownloadURL, r.MagnetURL = s.DownloadURL, s.MagnetURL
+	return r, nil
 }
 
 // Key identifies a release across searches: the infohash when known, else the

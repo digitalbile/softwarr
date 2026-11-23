@@ -12,8 +12,8 @@ function result(over: Partial<SearchResult>): SearchResult {
   return {
     guid: 'g', title: 'Thing', indexer: 'Idx', indexerId: 1, protocol: 'torrent', size: 1024 ** 3,
     publishDate: new Date(Date.now() - 3 * 86400000).toISOString(), seeders: 10, leechers: 2, grabs: null,
-    downloadUrl: '', magnetUrl: 'magnet:?xt=urn:btih:abc', infoHash: 'abc', categories: [4000],
-    key: 'k', status: 'requestable', libraryItemId: null, ...over,
+    infoHash: 'abc', categories: [4000],
+    key: 'k', status: 'requestable', libraryItemId: null, token: `tok-${over.key ?? 'k'}`, ...over,
   }
 }
 
@@ -79,8 +79,7 @@ test('request dialog enforces required comment', async () => {
   await u.type(within(dialog).getByLabelText(/Why do you need this software\?/), 'For work')
   await u.click(within(dialog).getByRole('button', { name: 'Send request' }))
   await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
-  expect(body).toMatchObject({ comment: 'For work', release: { guid: 'd' } })
-  expect(Object.keys((body as { release: object }).release)).not.toContain('status')
+  expect(body).toEqual({ token: 'tok-d', comment: 'For work' })
   const row = screen.getByText('Delta app').closest('tr')!
   expect(within(row).getByText('Requested')).toBeInTheDocument()
 })

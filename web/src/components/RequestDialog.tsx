@@ -5,7 +5,6 @@ import { useMutation } from '@tanstack/react-query'
 import { api } from '../api/client'
 import type { Request, SearchResult } from '../api/types'
 import { formatBytes } from '../format'
-import { toRelease } from '../releases'
 
 interface Props {
   result: SearchResult | null
@@ -27,7 +26,7 @@ function Form({ result, commentRequired, onClose, onRequested }: Props & { resul
   const [comment, setComment] = useState('')
   const [error, setError] = useState('')
   const create = useMutation({
-    mutationFn: () => api<Request>('/requests', { method: 'POST', json: { release: toRelease(result), comment: comment.trim() } }),
+    mutationFn: () => api<Request>('/requests', { method: 'POST', json: { token: result.token, comment: comment.trim() } }),
     onSuccess: () => {
       notifications.show({ message: 'Request sent.', color: 'green' })
       onRequested(result)

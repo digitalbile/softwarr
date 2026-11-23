@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"log/slog"
 	"net/http"
 	"slices"
 	"strconv"
@@ -9,16 +10,23 @@ import (
 
 	"github.com/digitalbile/softwarr/internal/auth"
 	"github.com/digitalbile/softwarr/internal/prowlarr"
+	"github.com/digitalbile/softwarr/internal/releasetoken"
 )
 
 const prowlarrTimeout = 60 * time.Second
 
+// SearchResult is one release as the browser sees it. The embedded Release
+// never serializes its download links; Token carries them, sealed, so a
+// request names a release the server found rather than one the client wrote.
 type SearchResult struct {
 	prowlarr.Release
 	Key           string `json:"key"`
 	Status        string `json:"status"` // "available" | "requested" | "requestable" | "no_client"
 	LibraryItemID *int64 `json:"libraryItemId"`
+	Token         string `json:"token"`
 }
+
+const prowlarrUnreachableForUsers = "Couldn't reach Prowlarr. Ask an admin to check System > Health."
 
 func (s *server) registerSearchRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/search", requireUser(s.handleSearch))
@@ -49,8 +57,9 @@ func (s *server) handleSearch(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusConflict, "Prowlarr isn't set up yet. An admin can add it in Settings > Indexers.")
 		return
 	}
+	p, _ := auth.FromContext(ctx)
 	var indexerIDs []int
-	if p, _ := auth.FromContext(ctx); p.IsAdmin {
+	if p.IsAdmin {
 		for _, f := range strings.Split(r.URL.Query().Get("indexerIds"), ",") {
 			if id, err := strconv.Atoi(strings.TrimSpace(f)); err == nil {
 				indexerIDs = append(indexerIDs, id)
@@ -59,15 +68,31 @@ func (s *server) handleSearch(w http.ResponseWriter, r *http.Request) {
 	}
 	releases, err := s.prowlarrClient(st.Prowlarr.URL, st.Prowlarr.APIKey).Search(ctx, q, st.Prowlarr.Categories, indexerIDs)
 	if err != nil {
-		writeError(w, http.StatusBadGateway, "Couldn't reach Prowlarr: "+err.Error())
+		slog.Warn("prowlarr search failed", "err", err)
+		if p.IsAdmin {
+			writeError(w, http.StatusBadGateway, "Couldn't reach Prowlarr: "+err.Error())
+		} else {
+			writeError(w, http.StatusBadGateway, prowlarrUnreachableForUsers)
+		}
+		return
+	}
+	secret, err := s.Settings.ReleaseSecret(ctx)
+	if err != nil {
+		serverError(w, err)
 		return
 	}
 
+	now := s.Now()
 	results := make([]SearchResult, len(releases))
 	keys := make([]string, len(releases))
 	for i, rel := range releases {
 		keys[i] = rel.Key()
-		results[i] = SearchResult{Release: rel, Key: keys[i]}
+		tok, err := releasetoken.Seal(secret, rel, p.UserID, now)
+		if err != nil {
+			serverError(w, err)
+			return
+		}
+		results[i] = SearchResult{Release: rel, Key: keys[i], Token: tok}
 	}
 	available := map[string]int64{}
 	requested := map[string]bool{}

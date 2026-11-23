@@ -2,13 +2,12 @@ import { useState } from 'react'
 import { Alert, Button, Group, Loader, Modal, Stack, Text, TextInput } from '@mantine/core'
 import { useQuery } from '@tanstack/react-query'
 import { api, isConflict } from '../api/client'
-import type { Release, Request, SearchResult } from '../api/types'
-import { toRelease } from '../releases'
+import type { Request, SearchResult } from '../api/types'
 import { ReleaseTable } from './ReleaseTable'
 
 export interface ApproveBody {
   displayTitle?: string
-  replacement?: Release
+  replacementToken?: string
 }
 
 interface Props {
@@ -52,7 +51,7 @@ function Form({ request, onClose, onApprove }: Props & { request: Request }) {
   const approve = async () => {
     const body: ApproveBody = {}
     if (title.trim()) body.displayTitle = title.trim()
-    if (chosen) body.replacement = toRelease(chosen)
+    if (chosen) body.replacementToken = chosen.token
     setBusy(true)
     setError('')
     try {

@@ -20,8 +20,8 @@ function req(over: Partial<Request>): Request {
 function result(over: Partial<SearchResult>): SearchResult {
   return {
     guid: 'r', title: 'Other', indexer: 'Idx', indexerId: 1, protocol: 'torrent', size: 1024, publishDate: '2026-11-01T00:00:00Z',
-    seeders: 1, leechers: 0, grabs: null, downloadUrl: '', magnetUrl: 'magnet:?xt=urn:btih:abc', infoHash: 'abc', categories: [],
-    key: 'k', status: 'requestable', libraryItemId: null, ...over,
+    seeders: 1, leechers: 0, grabs: null, infoHash: 'abc', categories: [],
+    key: 'k', status: 'requestable', libraryItemId: null, token: `tok-${over.key ?? 'k'}`, ...over,
   }
 }
 
@@ -66,7 +66,7 @@ test('approve sends display title', async () => {
   await waitFor(() => expect(body).toEqual({ displayTitle: 'Nice name' }))
 })
 
-test('approve with replacement sends chosen release', async () => {
+test('approve with replacement sends the chosen result token', async () => {
   let body: Record<string, unknown> = {}
   let q = ''
   setup([
@@ -88,12 +88,7 @@ test('approve with replacement sends chosen release', async () => {
   await userEvent.click(screen.getByRole('button', { name: 'Use Better app' }))
   expect(screen.getByText('Replacement: Better app')).toBeInTheDocument()
   await userEvent.click(screen.getByRole('button', { name: 'Approve' }))
-  await waitFor(() => expect(body.replacement).toBeDefined())
-  expect(body).not.toHaveProperty('displayTitle')
-  const rep = body.replacement as Record<string, unknown>
-  expect(rep.guid).toBe('b')
-  expect(rep).not.toHaveProperty('key')
-  expect(rep).not.toHaveProperty('status')
+  await waitFor(() => expect(body).toEqual({ replacementToken: 'tok-b' }))
 })
 
 test('deny sends reason', async () => {

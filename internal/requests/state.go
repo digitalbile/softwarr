@@ -85,7 +85,9 @@ type Request struct {
 	UpdatedAt       time.Time         `json:"updatedAt"`
 }
 
+// ApproveOpts adjusts an approval. Replacement must be a release the server
+// found, such as one opened from a search result token.
 type ApproveOpts struct {
-	DisplayTitle string            `json:"displayTitle"`
-	Replacement  *prowlarr.Release `json:"replacement"`
+	DisplayTitle string
+	Replacement  *prowlarr.Release
 }

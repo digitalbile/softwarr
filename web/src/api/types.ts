@@ -53,6 +53,7 @@ export interface Settings {
   oidc: OIDCSettings
 }
 
+// Download links never leave the server; a search result carries a sealed token instead.
 export interface Release {
   guid: string
   title: string
@@ -64,8 +65,6 @@ export interface Release {
   seeders: number | null
   leechers: number | null
   grabs: number | null
-  downloadUrl: string
-  magnetUrl: string
   infoHash: string
   categories: number[]
 }
@@ -76,6 +75,8 @@ export interface SearchResult extends Release {
   key: string
   status: SearchStatus
   libraryItemId: number | null
+  // Names this result in POST /requests and approve-with-replacement.
+  token: string
 }
 
 export type RequestStatus =

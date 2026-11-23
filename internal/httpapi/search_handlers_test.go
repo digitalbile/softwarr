@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/digitalbile/softwarr/internal/prowlarr"
+	"github.com/digitalbile/softwarr/internal/releasetoken"
 	"github.com/digitalbile/softwarr/internal/settings"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -168,14 +169,73 @@ func TestSearchProwlarrUnavailable(t *testing.T) {
 	ts.newClient().loginAsOwner()
 	ts.loginAsUser()
 
+	// Users get a generic message; the detail can carry Prowlarr's URL.
 	resp := ts.do("GET", "/api/v1/search?q=x", nil)
+	require.Equal(t, http.StatusBadGateway, resp.StatusCode)
+	assert.Equal(t, "Couldn't reach Prowlarr. Ask an admin to check System > Health.", errorBody(t, resp))
+
+	admin := ts.newClient()
+	admin.loginAsOwner()
+	resp = admin.do("GET", "/api/v1/search?q=x", nil)
 	require.Equal(t, http.StatusBadGateway, resp.StatusCode)
 	assert.Contains(t, errorBody(t, resp), "Couldn't reach Prowlarr: ")
 
 	bad.Close()
 	resp = ts.do("GET", "/api/v1/search?q=x", nil)
 	require.Equal(t, http.StatusBadGateway, resp.StatusCode)
-	assert.Contains(t, errorBody(t, resp), "Couldn't reach Prowlarr")
+	assert.Equal(t, "Couldn't reach Prowlarr. Ask an admin to check System > Health.", errorBody(t, resp))
+}
+
+func TestSearchResultsHideDownloadLinks(t *testing.T) {
+	ts := newTestServer(t)
+	fp := newFakeProwlarr(t)
+	configureProwlarr(t, ts, fp.URL)
+	seedClient(t, ts)
+	admin := ts.newClient()
+	o := admin.loginAsOwner()
+	u := ts.loginAsUser()
+
+	for _, c := range []struct {
+		name   string
+		client *client
+		uid    int64
+	}{{"user", ts.client, u.ID}, {"admin", admin, o.ID}} {
+		t.Run(c.name, func(t *testing.T) {
+			resp := c.client.do("GET", "/api/v1/search?q=x", nil)
+			require.Equal(t, http.StatusOK, resp.StatusCode)
+			body := readBody(t, resp)
+			for _, leak := range []string{"downloadUrl", "magnetUrl", "prowlarr.local", "magnet:"} {
+				assert.NotContains(t, body, leak)
+			}
+			rows := decodeString[[]struct {
+				Title string `json:"title"`
+				Token string `json:"token"`
+			}](t, body)
+			require.Len(t, rows, 3)
+			key, err := ts.Deps.Settings.ReleaseSecret(t.Context())
+			require.NoError(t, err)
+			for _, r := range rows {
+				require.NotEmpty(t, r.Token)
+				rel, err := releasetoken.Open(key, r.Token, c.uid, ts.Clock.Now())
+				require.NoError(t, err)
+				assert.Equal(t, r.Title, rel.Title)
+				assert.True(t, rel.DownloadURL != "" || rel.MagnetURL != "", "the token keeps the link")
+			}
+		})
+	}
+
+	// A user requests straight from a search result.
+	rows := decode[[]struct {
+		Title  string `json:"title"`
+		Token  string `json:"token"`
+		Status string `json:"status"`
+	}](t, ts.do("GET", "/api/v1/search?q=x", nil))
+	require.Equal(t, "requestable", rows[1].Status)
+	resp := ts.do("POST", "/api/v1/requests", map[string]any{"token": rows[1].Token, "comment": "for work"})
+	require.Equal(t, http.StatusCreated, resp.StatusCode)
+	var stored string
+	require.NoError(t, ts.DB.QueryRow("SELECT release FROM requests").Scan(&stored))
+	assert.Contains(t, stored, "http://prowlarr.local/1/download")
 }
 
 func TestSearchProwlarrTimeout(t *testing.T) {
