@@ -8,10 +8,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/digitalbile/softwarr/internal/auth"
 	"github.com/digitalbile/softwarr/internal/db/dbq"
 	"github.com/digitalbile/softwarr/internal/downloadclient"
 )
+
+const errDownloadClientNotFound = "That download client doesn't exist."
 
 const (
 	passwordMask      = "********"
@@ -150,7 +151,7 @@ func (s *server) handleCreateDownloadClient(w http.ResponseWriter, r *http.Reque
 }
 
 func (s *server) handleUpdateDownloadClient(w http.ResponseWriter, r *http.Request) {
-	id, ok := userID(w, r)
+	id, ok := pathID(w, r, errDownloadClientNotFound)
 	if !ok {
 		return
 	}
@@ -160,7 +161,7 @@ func (s *server) handleUpdateDownloadClient(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	if _, err := s.Q.GetDownloadClient(r.Context(), id); errors.Is(err, sql.ErrNoRows) {
-		writeError(w, http.StatusNotFound, auth.ErrNotFound.Error())
+		writeError(w, http.StatusNotFound, errDownloadClientNotFound)
 		return
 	} else if err != nil {
 		serverError(w, err)
@@ -182,7 +183,7 @@ func (s *server) handleUpdateDownloadClient(w http.ResponseWriter, r *http.Reque
 }
 
 func (s *server) handleDeleteDownloadClient(w http.ResponseWriter, r *http.Request) {
-	id, ok := userID(w, r)
+	id, ok := pathID(w, r, errDownloadClientNotFound)
 	if !ok {
 		return
 	}
@@ -192,7 +193,7 @@ func (s *server) handleDeleteDownloadClient(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	if n == 0 {
-		writeError(w, http.StatusNotFound, auth.ErrNotFound.Error())
+		writeError(w, http.StatusNotFound, errDownloadClientNotFound)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

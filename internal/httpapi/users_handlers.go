@@ -36,9 +36,15 @@ func writeUserError(w http.ResponseWriter, err error) {
 }
 
 func userID(w http.ResponseWriter, r *http.Request) (int64, bool) {
+	return pathID(w, r, auth.ErrNotFound.Error())
+}
+
+// pathID parses the {id} path value, writing a 404 with notFoundMsg when it
+// isn't a number.
+func pathID(w http.ResponseWriter, r *http.Request, notFoundMsg string) (int64, bool) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
-		writeError(w, http.StatusNotFound, auth.ErrNotFound.Error())
+		writeError(w, http.StatusNotFound, notFoundMsg)
 		return 0, false
 	}
 	return id, true

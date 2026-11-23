@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"sort"
 	"sync"
+	"time"
 
 	"github.com/digitalbile/softwarr/internal/db/dbq"
 )
@@ -54,7 +55,7 @@ func New(cfg Config, httpc *http.Client) (Client, error) {
 		return nil, Invalid("Choose a download client type.")
 	}
 	if httpc == nil {
-		httpc = &http.Client{Timeout: 30e9}
+		httpc = &http.Client{Timeout: 30 * time.Second}
 	}
 	return r.factory(cfg, httpc)
 }
