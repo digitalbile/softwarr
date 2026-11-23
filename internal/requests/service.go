@@ -115,7 +115,8 @@ func (s *Service) Create(ctx context.Context, p auth.Principal, rel prowlarr.Rel
 	}
 	status := Pending
 	var approvedBy sql.NullInt64
-	if p.IsAdmin || p.AutoApprove {
+	// Without a library folder nothing could be imported, so wait for an admin.
+	if (p.IsAdmin || p.AutoApprove) && strings.TrimSpace(st.LibraryRoot) != "" {
 		status = Approved
 		approvedBy = sql.NullInt64{Int64: p.UserID, Valid: true}
 	}

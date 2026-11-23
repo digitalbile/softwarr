@@ -341,3 +341,21 @@ func TestNotificationsOnApproveAndDeny(t *testing.T) {
 	}
 	assert.Equal(t, 2, updated)
 }
+
+func TestAutoApproveNeedsLibraryRoot(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	e.setSettings(t, func(s *settings.Settings) { s.LibraryRoot = "" })
+	r, err := e.svc.Create(ctx, e.admin, rel("a"), "")
+	require.NoError(t, err)
+	assert.Equal(t, Pending, r.Status)
+	n, err := e.q.ListNotifications(ctx, dbq.ListNotificationsParams{UserID: e.admin.UserID, Column2: 0})
+	require.NoError(t, err)
+	require.Len(t, n, 1)
+	assert.Equal(t, notify.EvRequestCreated, n[0].Type)
+
+	e.setSettings(t, func(s *settings.Settings) { s.LibraryRoot = "/library" })
+	r, err = e.svc.Create(ctx, e.admin, rel("b"), "")
+	require.NoError(t, err)
+	assert.Equal(t, Approved, r.Status)
+}
