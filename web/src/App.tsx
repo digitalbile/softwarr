@@ -3,8 +3,8 @@ import { urlBase } from './api/client'
 import { AuthProvider } from './auth/AuthProvider'
 import { RequireAdmin, RequireAuth } from './auth/guards'
 import { Shell } from './layout/Shell'
-import { ActivityPage } from './pages/ActivityPage'
-import { AdminRequestsPage } from './pages/AdminRequestsPage'
+import { ActivityPage } from './pages/admin/ActivityPage'
+import { RequestsQueuePage } from './pages/admin/RequestsQueuePage'
 import { ChangePasswordPage } from './pages/ChangePasswordPage'
 import { LibraryItemPage } from './pages/LibraryItemPage'
 import { LibraryPage } from './pages/LibraryPage'
@@ -31,7 +31,7 @@ export function AppRoutes() {
           <Route path="/requests" element={<MyRequestsPage />} />
           <Route path="/profile" element={<ProfilePage />} />
           <Route element={<RequireAdmin />}>
-            <Route path="/admin/requests" element={<AdminRequestsPage />} />
+            <Route path="/admin/requests" element={<RequestsQueuePage />} />
             <Route path="/activity" element={<ActivityPage />} />
             <Route path="/settings/*" element={<SettingsPage />} />
             <Route path="/system" element={<SystemPage />} />
