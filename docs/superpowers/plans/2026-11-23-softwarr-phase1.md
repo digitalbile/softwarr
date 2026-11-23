@@ -23,7 +23,7 @@
 - Exact UI copy fixed by the spec: request prompt "Why do you need this software?", duplicate rejection "This release has already been requested.", unrequestable badge "No compatible download client".
 - All user-facing prose (UI strings, error messages, README, PR descriptions) goes through the `humanizer:humanizer` skill before commit: no em or en dashes, sentence-case headings, no decorative bold.
 - JSON error body shape everywhere: `{"error": "<message>"}`.
-- Commit after every task. Commit messages end with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
+- Commit after every task. No Claude or AI attribution in commits or PRs (no Co-Authored-By trailer, no "Generated with" line).
 
 ## Review Focus
 
