@@ -2,6 +2,8 @@ package auth
 
 import (
 	"context"
+	"database/sql"
+	"fmt"
 	"testing"
 
 	"github.com/digitalbile/softwarr/internal/db/dbq"
@@ -74,6 +76,7 @@ func TestResolveNewIdentityAutoProvisions(t *testing.T) {
 	ctx := context.Background()
 	c := claimsFor("sub-new")
 	c.Email = "jane@example.com"
+	c.EmailVerified = true
 	c.PreferredUsername = "jane"
 
 	id, out, err := ResolveLogin(ctx, u.q, oidcCfg(), c, nil)
@@ -89,6 +92,31 @@ func TestResolveNewIdentityAutoProvisions(t *testing.T) {
 	assert.True(t, user.HasOIDC)
 	assert.False(t, user.IsAdmin)
 	assert.False(t, user.IsOwner)
+}
+
+func TestResolveNewIdentityDropsUnverifiedEmail(t *testing.T) {
+	u := newUsers(t)
+	ctx := context.Background()
+	for _, auto := range []bool{true, false} {
+		cfg := oidcCfg()
+		cfg.AutoProvision = auto
+		c := claimsFor(fmt.Sprintf("sub-unverified-%v", auto))
+		c.Email = fmt.Sprintf("victim-%v@example.com", auto)
+		c.PreferredUsername = fmt.Sprintf("mallory-%v", auto)
+
+		id, _, err := ResolveLogin(ctx, u.q, cfg, c, nil)
+		if !auto {
+			require.ErrorIs(t, err, ErrAwaitingApproval)
+		} else {
+			require.NoError(t, err)
+		}
+		user, err := u.Get(ctx, id)
+		require.NoError(t, err)
+		assert.Empty(t, user.Email, "an unverified email is not stored")
+		var email sql.NullString
+		require.NoError(t, u.db.QueryRow("SELECT email FROM users WHERE id = ?", id).Scan(&email))
+		assert.False(t, email.Valid)
+	}
 }
 
 func TestResolveNewIdentityPendingWhenProvisioningOff(t *testing.T) {
