@@ -2,6 +2,8 @@ package settings
 
 import (
 	"context"
+	"encoding/hex"
+	"encoding/json"
 	"regexp"
 	"testing"
 
@@ -115,4 +117,36 @@ func TestRegenerateAPIKey(t *testing.T) {
 	reloaded, err := NewStore(q).Get(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, key, reloaded.APIKey)
+}
+
+func TestReleaseSecretGeneratedPersistedAndKeptOutOfSettings(t *testing.T) {
+	_, q := testutil.NewDB(t)
+	s := NewStore(q)
+	ctx := context.Background()
+
+	st, err := s.Get(ctx)
+	require.NoError(t, err)
+	// Generated on first load, like the API key.
+	raw, err := q.GetSetting(ctx, releaseSecretKey)
+	require.NoError(t, err)
+	assert.Regexp(t, regexp.MustCompile(`^[0-9a-f]{64}$`), raw)
+
+	key, err := s.ReleaseSecret(ctx)
+	require.NoError(t, err)
+	assert.Len(t, key, 32)
+	assert.Equal(t, raw, hex.EncodeToString(key))
+
+	again, err := NewStore(q).ReleaseSecret(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, key, again)
+
+	// The secret is not part of Settings, so it can't be read or written
+	// through the settings API.
+	b, err := json.Marshal(st)
+	require.NoError(t, err)
+	assert.NotContains(t, string(b), raw)
+	require.NoError(t, s.Save(ctx, st))
+	after, err := s.ReleaseSecret(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, key, after)
 }

@@ -3,7 +3,6 @@ package requests
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -116,7 +115,7 @@ func (s *Service) Create(ctx context.Context, p auth.Principal, rel prowlarr.Rel
 	if err := s.checkNotInLibrary(ctx, key); err != nil {
 		return Request{}, err
 	}
-	raw, err := json.Marshal(rel)
+	raw, err := prowlarr.MarshalStored(rel)
 	if err != nil {
 		return Request{}, err
 	}
@@ -176,7 +175,7 @@ func (s *Service) Approve(ctx context.Context, p auth.Principal, id int64, o App
 		if err := s.checkNotInLibrary(ctx, rel.Key()); err != nil {
 			return Request{}, err
 		}
-		if replacement, err = json.Marshal(rel); err != nil {
+		if replacement, err = prowlarr.MarshalStored(rel); err != nil {
 			return Request{}, err
 		}
 	}
@@ -380,12 +379,13 @@ func toRequest(r dbq.GetRequestRow) (Request, error) {
 		Comment: r.Comment, DisplayTitle: r.DisplayTitle, DenyReason: r.DenyReason, Error: r.Error,
 		Progress: r.Progress, CreatedAt: time.Unix(r.CreatedAt, 0).UTC(), UpdatedAt: time.Unix(r.UpdatedAt, 0).UTC(),
 	}
-	if err := json.Unmarshal([]byte(r.Release), &out.Release); err != nil {
+	var err error
+	if out.Release, err = prowlarr.UnmarshalStored([]byte(r.Release)); err != nil {
 		return Request{}, fmt.Errorf("request %d release: %w", r.ID, err)
 	}
 	if r.OriginalRelease.Valid {
-		var o prowlarr.Release
-		if err := json.Unmarshal([]byte(r.OriginalRelease.String), &o); err != nil {
+		o, err := prowlarr.UnmarshalStored([]byte(r.OriginalRelease.String))
+		if err != nil {
 			return Request{}, fmt.Errorf("request %d original release: %w", r.ID, err)
 		}
 		out.OriginalRelease = &o

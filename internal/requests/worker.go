@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -187,8 +186,12 @@ func (w *Worker) reattach(ctx context.Context, row dbq.Request) (bool, error) {
 }
 
 // resolve works out what to hand the download client: the torrent file or
-// magnet behind DownloadURL, falling back to MagnetURL.
+// magnet behind DownloadURL (which may itself be a magnet), falling back to
+// MagnetURL.
 func (w *Worker) resolve(ctx context.Context, rel prowlarr.Release) (downloadclient.AddRequest, error) {
+	if isMagnet(rel.DownloadURL) {
+		return magnet(rel.DownloadURL)
+	}
 	if rel.DownloadURL != "" {
 		add, err := w.fetch(ctx, rel.DownloadURL)
 		if err == nil || rel.MagnetURL == "" {
@@ -470,8 +473,8 @@ func (w *Worker) client(cfg downloadclient.Config) (downloadclient.Client, error
 }
 
 func releaseOf(row dbq.Request) (prowlarr.Release, error) {
-	var rel prowlarr.Release
-	if err := json.Unmarshal([]byte(row.Release), &rel); err != nil {
+	rel, err := prowlarr.UnmarshalStored([]byte(row.Release))
+	if err != nil {
 		return rel, fmt.Errorf("request %d release: %w", row.ID, err)
 	}
 	return rel, nil

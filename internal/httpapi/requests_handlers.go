@@ -7,6 +7,7 @@ import (
 
 	"github.com/digitalbile/softwarr/internal/auth"
 	"github.com/digitalbile/softwarr/internal/prowlarr"
+	"github.com/digitalbile/softwarr/internal/releasetoken"
 	"github.com/digitalbile/softwarr/internal/requests"
 )
 
@@ -37,17 +38,42 @@ func writeRequestError(w http.ResponseWriter, err error) {
 	}
 }
 
+// openRelease returns the release sealed in a search result token issued to
+// the caller. ok is false when it wrote an error response.
+func (s *server) openRelease(w http.ResponseWriter, r *http.Request, token string) (rel prowlarr.Release, ok bool) {
+	p, _ := auth.FromContext(r.Context())
+	secret, err := s.Settings.ReleaseSecret(r.Context())
+	if err != nil {
+		serverError(w, err)
+		return rel, false
+	}
+	rel, err = releasetoken.Open(secret, token, p.UserID, s.Now())
+	if err != nil {
+		if errors.Is(err, releasetoken.ErrInvalid) || errors.Is(err, releasetoken.ErrExpired) {
+			writeError(w, http.StatusBadRequest, err.Error())
+		} else {
+			serverError(w, err)
+		}
+		return rel, false
+	}
+	return rel, true
+}
+
 func (s *server) handleCreateRequest(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		Release prowlarr.Release `json:"release"`
-		Comment string           `json:"comment"`
+		Token   string `json:"token"`
+		Comment string `json:"comment"`
 	}
 	if err := decodeJSON(r, &in); err != nil {
 		writeError(w, http.StatusBadRequest, "That request wasn't valid.")
 		return
 	}
+	rel, ok := s.openRelease(w, r, in.Token)
+	if !ok {
+		return
+	}
 	p, _ := auth.FromContext(r.Context())
-	req, err := s.Requests.Create(r.Context(), p, in.Release, in.Comment)
+	req, err := s.Requests.Create(r.Context(), p, rel, in.Comment)
 	if err != nil {
 		writeRequestError(w, err)
 		return
@@ -85,15 +111,26 @@ func (s *server) handleApproveRequest(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	var in requests.ApproveOpts
+	var in struct {
+		DisplayTitle     string `json:"displayTitle"`
+		ReplacementToken string `json:"replacementToken"`
+	}
 	if r.ContentLength != 0 {
 		if err := decodeJSON(r, &in); err != nil {
 			writeError(w, http.StatusBadRequest, "That request wasn't valid.")
 			return
 		}
 	}
+	opts := requests.ApproveOpts{DisplayTitle: in.DisplayTitle}
+	if in.ReplacementToken != "" {
+		rel, ok := s.openRelease(w, r, in.ReplacementToken)
+		if !ok {
+			return
+		}
+		opts.Replacement = &rel
+	}
 	p, _ := auth.FromContext(r.Context())
-	req, err := s.Requests.Approve(r.Context(), p, id, in)
+	req, err := s.Requests.Approve(r.Context(), p, id, opts)
 	if err != nil {
 		writeRequestError(w, err)
 		return

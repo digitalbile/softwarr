@@ -217,6 +217,18 @@ func TestWorkerGrabFollowsMagnetRedirect(t *testing.T) {
 	assert.Nil(t, we.fc.adds[0].TorrentFile)
 }
 
+func TestWorkerGrabDownloadURLThatIsMagnet(t *testing.T) {
+	we := newWorkerEnv(t)
+	req := we.approved(t, prowlarr.Release{GUID: "g", Title: "Thing", Protocol: "torrent", DownloadURL: testMagnet})
+
+	require.NoError(t, we.w.Tick(context.Background()))
+
+	we.get(t, req.ID, Downloading)
+	require.Len(t, we.fc.adds, 1)
+	assert.Equal(t, testMagnet, we.fc.adds[0].MagnetURI)
+	assert.Equal(t, "0123456789abcdef0123456789abcdef01234567", we.fc.adds[0].InfoHash)
+}
+
 func TestWorkerGrabFallsBackToMagnet(t *testing.T) {
 	we := newWorkerEnv(t)
 	srv := indexer(t, nil, nil)

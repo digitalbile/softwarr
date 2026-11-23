@@ -182,6 +182,13 @@ func decode[T any](t *testing.T, resp *http.Response) T {
 	return v
 }
 
+func decodeString[T any](t *testing.T, s string) T {
+	t.Helper()
+	var v T
+	require.NoError(t, json.Unmarshal([]byte(s), &v))
+	return v
+}
+
 func errorBody(t *testing.T, resp *http.Response) string {
 	t.Helper()
 	return decode[map[string]string](t, resp)["error"]

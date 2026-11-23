@@ -15,7 +15,12 @@ import (
 	"github.com/digitalbile/softwarr/internal/db/dbq"
 )
 
-const settingsKey = "app"
+const (
+	settingsKey = "app"
+	// releaseSecretKey holds the key that seals search result tokens. It is
+	// stored apart from Settings so the settings API can never read or set it.
+	releaseSecretKey = "release_secret"
+)
 
 type Settings struct {
 	ExternalURL          string   `json:"externalUrl"`
@@ -71,6 +76,7 @@ type Store struct {
 	q      *dbq.Queries
 	mu     sync.Mutex
 	cached *Settings
+	secret []byte
 }
 
 func NewStore(q *dbq.Queries) *Store { return &Store{q: q} }
@@ -138,9 +144,12 @@ func validate(in Settings) error {
 	return nil
 }
 
-// load reads stored settings over the defaults and generates the API key on
-// first use. The caller holds s.mu.
+// load reads stored settings over the defaults and generates the API key and
+// release secret on first use. The caller holds s.mu.
 func (s *Store) load(ctx context.Context) error {
+	if err := s.loadSecret(ctx); err != nil {
+		return err
+	}
 	cur := defaults()
 	raw, err := s.q.GetSetting(ctx, settingsKey)
 	switch {
@@ -164,6 +173,41 @@ func (s *Store) load(ctx context.Context) error {
 	}
 	s.cached = &cur
 	return nil
+}
+
+// loadSecret reads the release secret, generating and storing a new one the
+// first time. The caller holds s.mu.
+func (s *Store) loadSecret(ctx context.Context) error {
+	if s.secret != nil {
+		return nil
+	}
+	raw, err := s.q.GetSetting(ctx, releaseSecretKey)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+	if key, decErr := hex.DecodeString(raw); err == nil && decErr == nil && len(key) == 32 {
+		s.secret = key
+		return nil
+	}
+	key := make([]byte, 32)
+	if _, err := rand.Read(key); err != nil {
+		return err
+	}
+	if err := s.q.UpsertSetting(ctx, dbq.UpsertSettingParams{Key: releaseSecretKey, Value: hex.EncodeToString(key)}); err != nil {
+		return err
+	}
+	s.secret = key
+	return nil
+}
+
+// ReleaseSecret returns the 32-byte key that seals search result tokens.
+func (s *Store) ReleaseSecret(ctx context.Context) ([]byte, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := s.loadSecret(ctx); err != nil {
+		return nil, err
+	}
+	return slices.Clone(s.secret), nil
 }
 
 func (s *Store) persist(ctx context.Context, v Settings) error {
