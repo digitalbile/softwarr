@@ -63,6 +63,11 @@ type testServer struct {
 func newTestServer(t *testing.T) *testServer { return newTestServerBase(t, "") }
 
 func newTestServerBase(t *testing.T, urlBase string) *testServer {
+	return newTestServerWith(t, urlBase, nil)
+}
+
+// newTestServerWith lets a test adjust Deps before the server starts.
+func newTestServerWith(t *testing.T, urlBase string, mutate func(*Deps)) *testServer {
 	t.Helper()
 	d, q := testutil.NewDB(t)
 	// Start at the real time: the cookie jar judges cookie expiry by the wall clock.
@@ -83,6 +88,9 @@ func newTestServerBase(t *testing.T, urlBase string) *testServer {
 		Now:          clock.Now,
 	}
 	deps.Notify = notify.New(q, deps.Broker, st, http.DefaultClient, clock.Now)
+	if mutate != nil {
+		mutate(&deps)
+	}
 	srv := httptest.NewServer(New(deps))
 	t.Cleanup(srv.Close)
 	ts := &testServer{t: t, srv: srv, DB: d, Q: q, Deps: deps, Clock: clock, shutdown: shutdown}

@@ -1,0 +1,48 @@
+[
+  {
+    "guid": "https://tracker.example/details/1001",
+    "title": "Example.Editor.2.4.1.Linux.x64",
+    "indexer": "ExampleTracker",
+    "indexerId": 1,
+    "protocol": "torrent",
+    "size": 123456789,
+    "publishDate": "2026-03-01T12:00:00Z",
+    "seeders": 42,
+    "leechers": 3,
+    "grabs": 17,
+    "downloadUrl": "http://prowlarr.local/1/download?link=abc&file=Example.Editor",
+    "magnetUrl": null,
+    "infoHash": "0123456789ABCDEF0123456789ABCDEF01234567",
+    "categories": [
+      {"id": 4000, "name": "PC", "subCategories": [{"id": 4010, "name": "PC/0day", "subCategories": []}]},
+      {"id": 4020, "name": "PC/ISO"}
+    ]
+  },
+  {
+    "guid": "https://tracker.example/details/1002",
+    "title": "Example.Player.9.0.Windows",
+    "indexer": "MagnetOnlyTracker",
+    "indexerId": 2,
+    "protocol": "torrent",
+    "size": 5000,
+    "publishDate": "2026-03-02T08:30:00Z",
+    "seeders": 0,
+    "leechers": 0,
+    "downloadUrl": null,
+    "magnetUrl": "magnet:?xt=urn:btih:FEDCBA9876543210FEDCBA9876543210FEDCBA98&dn=Example.Player.9.0",
+    "infoHash": null,
+    "categories": [{"id": 4000, "name": "PC"}]
+  },
+  {
+    "guid": "nzb-guid-3003",
+    "title": "Example.Suite.2026.Retail",
+    "indexer": "UsenetIndexer",
+    "indexerId": 3,
+    "protocol": "usenet",
+    "size": 987654321,
+    "publishDate": "2026-02-20T00:00:00Z",
+    "grabs": 120,
+    "downloadUrl": "http://prowlarr.local/3/download?link=nzb",
+    "categories": [{"id": 4030, "name": "PC/Mac"}]
+  }
+]
