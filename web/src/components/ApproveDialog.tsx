@@ -49,13 +49,18 @@ function Form({ request, mode, onClose, onApprove }: Props & { request: ApproveT
     queryFn: () => api<SearchResult[]>(`/search?${new URLSearchParams({ q: submitted! })}`),
     enabled: submitted !== null,
     retry: false,
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   })
 
   const runSearch = (e: React.FormEvent) => {
     e.preventDefault()
     e.stopPropagation()
     const q = query.trim()
-    if (q) setSubmitted(q)
+    if (!q) return
+    if (q === submitted) void search.refetch()
+    else setSubmitted(q)
   }
 
   const approve = async () => {

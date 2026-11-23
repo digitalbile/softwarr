@@ -5,7 +5,8 @@ import { urlBase } from '../api/client'
 const invalidations: Record<string, string[]> = {
   'request.updated': ['requests', 'activity'],
   notification: ['notifications'],
-  'library.updated': ['library', 'search'],
+  // Not 'search': re-running a Prowlarr search on every import is costly.
+  'library.updated': ['library'],
   activity: ['activity'],
   health: ['health'],
 }

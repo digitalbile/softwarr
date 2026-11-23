@@ -37,13 +37,20 @@ export function SearchPage() {
     },
     enabled: submitted !== null,
     retry: false,
+    // Searching hits every indexer, so only run it when asked to.
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   })
 
   const onSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     const q = text.trim()
     if (!q) return
-    setSubmitted({ q, indexerIds: picked.map(Number).sort((a, b) => a - b) })
+    const next = { q, indexerIds: picked.map(Number).sort((a, b) => a - b) }
+    // The same search again won't change the query key, so fetch it explicitly.
+    if (submitted && JSON.stringify(submitted) === JSON.stringify(next)) void search.refetch()
+    else setSubmitted(next)
   }
 
   const markRequested = (r: SearchResult) =>

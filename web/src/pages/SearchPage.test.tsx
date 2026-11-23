@@ -1,10 +1,11 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { focusManager } from '@tanstack/react-query'
 import { http, HttpResponse } from 'msw'
 import { expect, test } from 'vitest'
 import type { SearchResult } from '../api/types'
 import { makeUser, server } from '../test/server'
-import { renderApp, useApiServer } from '../test/utils'
+import { FakeEventSource, renderApp, useApiServer } from '../test/utils'
 
 useApiServer()
 
@@ -123,4 +124,35 @@ test('admins can filter by indexer', async () => {
   await u.type(screen.getByLabelText('Search for software'), 'app{Enter}')
   await screen.findByText('Alpha app')
   expect(ids).toBe('3')
+})
+
+test('events and focus do not re-run the search, but the Search button does', async () => {
+  let searches = 0
+  server.use(http.post('*/api/v1/requests', () => HttpResponse.json({ id: 1 }, { status: 201 })))
+  setup({}, () => {
+    searches++
+    return HttpResponse.json(results)
+  })
+  const u = await runSearch()
+  await screen.findByText('Delta app')
+  expect(searches).toBe(1)
+
+  await u.click(screen.getByRole('button', { name: 'Request Delta app' }))
+  await u.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Send request' }))
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+
+  await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1))
+  const events = FakeEventSource.instances[0]
+  events.emit('library.updated', { id: 3 })
+  events.emit('request.updated', { id: 1, status: 'pending', progress: 0 })
+  focusManager.setFocused(false)
+  focusManager.setFocused(true)
+  focusManager.setFocused(undefined)
+  await new Promise((r) => setTimeout(r, 50))
+  expect(searches).toBe(1)
+  // The optimistic badge stays.
+  expect(within(screen.getByText('Delta app').closest('tr')!).getByText('Requested')).toBeInTheDocument()
+
+  await u.click(screen.getByRole('button', { name: 'Search' }))
+  await waitFor(() => expect(searches).toBe(2))
 })
