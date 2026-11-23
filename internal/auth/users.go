@@ -33,10 +33,16 @@ const (
 )
 
 type User struct {
-	ID                                                                      int64
-	Username, Email                                                         string
-	IsOwner, IsAdmin, AutoApprove, MustChangePassword, HasPassword, HasOIDC bool
-	Status                                                                  string
+	ID                 int64  `json:"id"`
+	Username           string `json:"username"`
+	Email              string `json:"email"`
+	IsOwner            bool   `json:"isOwner"`
+	IsAdmin            bool   `json:"isAdmin"`
+	AutoApprove        bool   `json:"autoApprove"`
+	MustChangePassword bool   `json:"mustChangePassword"`
+	HasPassword        bool   `json:"hasPassword"`
+	HasOIDC            bool   `json:"hasOidc"`
+	Status             string `json:"status"`
 }
 
 type UserPatch struct {
@@ -338,4 +344,27 @@ func (u *Users) ChangePassword(ctx context.Context, id int64, current, next stri
 		return err
 	}
 	return u.q.SetUserPassword(ctx, dbq.SetUserPasswordParams{PasswordHash: hash, ID: id})
+}
+
+// Owner returns the owner account.
+func (u *Users) Owner(ctx context.Context) (User, error) {
+	row, err := u.q.GetOwner(ctx)
+	if errors.Is(err, sql.ErrNoRows) {
+		return User{}, ErrNotFound
+	}
+	if err != nil {
+		return User{}, err
+	}
+	return u.toUser(ctx, u.q, row)
+}
+
+// IsInputError reports whether err is a validation failure that is safe to
+// show to the person who caused it.
+func IsInputError(err error) bool {
+	for _, e := range []error{errUsernameRequired, errUsernameTooLong, errPasswordTooShort, errUsernameTaken, errEmailTaken, errBadStatus} {
+		if errors.Is(err, e) {
+			return true
+		}
+	}
+	return false
 }

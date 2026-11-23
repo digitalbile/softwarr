@@ -26,3 +26,6 @@ UPDATE users SET password_hash = ?, must_change_password = 0 WHERE id = ?;
 
 -- name: UserHasIdentity :one
 SELECT EXISTS (SELECT 1 FROM user_identities WHERE user_id = ?);
+
+-- name: GetOwner :one
+SELECT * FROM users WHERE is_owner = 1;

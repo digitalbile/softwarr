@@ -76,6 +76,28 @@ func (q *Queries) DeleteUser(ctx context.Context, id int64) error {
 	return err
 }
 
+const getOwner = `-- name: GetOwner :one
+SELECT id, username, email, password_hash, is_owner, is_admin, auto_approve, status, must_change_password, created_at FROM users WHERE is_owner = 1
+`
+
+func (q *Queries) GetOwner(ctx context.Context) (User, error) {
+	row := q.db.QueryRowContext(ctx, getOwner)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Username,
+		&i.Email,
+		&i.PasswordHash,
+		&i.IsOwner,
+		&i.IsAdmin,
+		&i.AutoApprove,
+		&i.Status,
+		&i.MustChangePassword,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const getUserByID = `-- name: GetUserByID :one
 SELECT id, username, email, password_hash, is_owner, is_admin, auto_approve, status, must_change_password, created_at FROM users WHERE id = ?
 `
