@@ -38,6 +38,7 @@ const (
 	ActImportFailed Action = "import_failed"
 	ActAbandon      Action = "abandon"
 	ActRetry        Action = "retry"
+	ActReplace      Action = "replace" // approve a failed request with another release
 )
 
 var ErrInvalidTransition = errors.New("That change isn't allowed for this request.")
@@ -47,7 +48,7 @@ var transitions = map[Status]map[Action]Status{
 	Approved:    {ActGrabbed: Downloading, ActGrabFailed: Failed, ActAbandon: Abandoned},
 	Downloading: {ActCompleted: Importing, ActClientError: Failed, ActAbandon: Abandoned},
 	Importing:   {ActImported: Available, ActImportFailed: Failed},
-	Failed:      {ActRetry: Approved, ActAbandon: Abandoned},
+	Failed:      {ActRetry: Approved, ActReplace: Approved, ActAbandon: Abandoned},
 }
 
 // Next returns the status reached by applying a to from.

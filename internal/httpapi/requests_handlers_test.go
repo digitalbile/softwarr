@@ -253,3 +253,31 @@ func TestApproveReplacementTokenChecks(t *testing.T) {
 	require.NoError(t, ts.DB.QueryRow("SELECT release FROM requests WHERE id = ?", got.ID).Scan(&stored))
 	assert.True(t, strings.Contains(stored, "passkey-b"))
 }
+
+func TestApproveFailedRequestWithReplacement(t *testing.T) {
+	ts := newTestServer(t)
+	seedClient(t, ts)
+	owner := ts.newClient()
+	o := owner.loginAsOwner()
+	st, err := ts.Deps.Settings.Get(t.Context())
+	require.NoError(t, err)
+	st.LibraryRoot = "/library"
+	require.NoError(t, ts.Deps.Settings.Save(t.Context(), st))
+
+	resp := owner.do("POST", "/api/v1/requests", ts.relBody("a", o.ID))
+	require.Equal(t, http.StatusCreated, resp.StatusCode)
+	id := decode[requestBody](t, resp).ID
+	_, err = ts.DB.Exec("UPDATE requests SET status = 'failed', error = 'stale link', client_item_id = 'old' WHERE id = ?", id)
+	require.NoError(t, err)
+	path := "/api/v1/requests/" + strconv.FormatInt(id, 10)
+
+	resp = owner.do("POST", path+"/approve", nil)
+	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+	assert.Equal(t, "Choose a different release, or retry this request.", errorBody(t, resp))
+
+	resp = owner.do("POST", path+"/approve", map[string]any{"replacementToken": ts.token(relFor("b"), o.ID)})
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	got := decode[requestBody](t, resp)
+	assert.Equal(t, "approved", got.Status)
+	assert.Equal(t, "b", got.Release["title"])
+}

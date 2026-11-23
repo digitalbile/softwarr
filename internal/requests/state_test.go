@@ -13,10 +13,10 @@ func TestTransitionTable(t *testing.T) {
 		Approved:    {ActGrabbed: Downloading, ActGrabFailed: Failed, ActAbandon: Abandoned},
 		Downloading: {ActCompleted: Importing, ActClientError: Failed, ActAbandon: Abandoned},
 		Importing:   {ActImported: Available, ActImportFailed: Failed},
-		Failed:      {ActRetry: Approved, ActAbandon: Abandoned},
+		Failed:      {ActRetry: Approved, ActReplace: Approved, ActAbandon: Abandoned},
 	}
 	statuses := []Status{Pending, Approved, Downloading, Importing, Available, Denied, Cancelled, Failed, Abandoned}
-	actions := []Action{ActApprove, ActDeny, ActCancel, ActGrabbed, ActGrabFailed, ActCompleted, ActClientError, ActImported, ActImportFailed, ActAbandon, ActRetry}
+	actions := []Action{ActApprove, ActDeny, ActCancel, ActGrabbed, ActGrabFailed, ActCompleted, ActClientError, ActImported, ActImportFailed, ActAbandon, ActRetry, ActReplace}
 	for _, from := range statuses {
 		for _, a := range actions {
 			got, err := Next(from, a)

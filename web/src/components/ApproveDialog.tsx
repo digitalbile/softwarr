@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Alert, Button, Group, Loader, Modal, Stack, Text, TextInput } from '@mantine/core'
 import { useQuery } from '@tanstack/react-query'
 import { api, isConflict } from '../api/client'
-import type { Request, SearchResult } from '../api/types'
+import type { SearchResult } from '../api/types'
 import { ReleaseTable } from './ReleaseTable'
 
 export interface ApproveBody {
@@ -10,25 +10,35 @@ export interface ApproveBody {
   replacementToken?: string
 }
 
+// The request being approved: its id and the title to show and search for.
+export interface ApproveTarget {
+  id: number
+  title: string
+}
+
 interface Props {
-  request: Request | null
+  request: ApproveTarget | null
+  // 'replace' is for a failed request: a different release must be chosen.
+  mode?: 'approve' | 'replace'
   onClose(): void
   onApprove(id: number, body: ApproveBody): Promise<void>
 }
 
-export function ApproveDialog({ request, onClose, onApprove }: Props) {
+export function ApproveDialog({ request, mode = 'approve', onClose, onApprove }: Props) {
+  const heading = mode === 'replace' ? 'Use a different release' : 'Approve this request'
   return (
-    <Modal opened={request !== null} onClose={onClose} title="Approve this request" size="xl" centered>
-      {request && <Form key={request.id} request={request} onClose={onClose} onApprove={onApprove} />}
+    <Modal opened={request !== null} onClose={onClose} title={heading} size="xl" centered>
+      {request && <Form key={request.id} request={request} mode={mode} onClose={onClose} onApprove={onApprove} />}
     </Modal>
   )
 }
 
 const canPick = (r: SearchResult) => r.status !== 'available' && r.status !== 'no_client'
 
-function Form({ request, onClose, onApprove }: Props & { request: Request }) {
+function Form({ request, mode, onClose, onApprove }: Props & { request: ApproveTarget }) {
+  const replacing = mode === 'replace'
   const [title, setTitle] = useState('')
-  const [query, setQuery] = useState(request.release.title)
+  const [query, setQuery] = useState(request.title)
   const [submitted, setSubmitted] = useState<string | null>(null)
   const [chosen, setChosen] = useState<SearchResult | null>(null)
   const [error, setError] = useState('')
@@ -73,16 +83,18 @@ function Form({ request, onClose, onApprove }: Props & { request: Request }) {
           {error}
         </Alert>
       )}
-      <Text fw={500}>{request.release.title}</Text>
+      <Text fw={500}>{request.title}</Text>
       <TextInput
         label="Display title"
-        placeholder={request.release.title}
+        placeholder={request.title}
         value={title}
         onChange={(e) => setTitle(e.currentTarget.value)}
       />
-      <Text fw={500} mt="xs">
-        Use a different release
-      </Text>
+      {!replacing && (
+        <Text fw={500} mt="xs">
+          Use a different release
+        </Text>
+      )}
       <form onSubmit={runSearch}>
         <Group align="flex-end" gap="sm">
           <TextInput
@@ -115,8 +127,8 @@ function Form({ request, onClose, onApprove }: Props & { request: Request }) {
         <Button variant="default" onClick={onClose}>
           Cancel
         </Button>
-        <Button onClick={approve} loading={busy}>
-          Approve
+        <Button onClick={approve} loading={busy} disabled={replacing && !chosen}>
+          {replacing ? 'Use this release' : 'Approve'}
         </Button>
       </Group>
     </Stack>

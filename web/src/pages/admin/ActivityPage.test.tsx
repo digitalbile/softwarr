@@ -2,7 +2,7 @@ import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { expect, test } from 'vitest'
-import type { Activity } from '../../api/types'
+import type { Activity, SearchResult } from '../../api/types'
 import { makeUser, server } from '../../test/server'
 import { renderApp, useApiServer } from '../../test/utils'
 
@@ -63,4 +63,40 @@ test('conflict on retry shows the message and refetches', async () => {
   await userEvent.click(await screen.findByRole('button', { name: 'Retry Broken app' }))
   expect(await screen.findByText('That request has already moved on.')).toBeInTheDocument()
   await waitFor(() => expect(fetches).toBeGreaterThan(1))
+})
+
+function found(over: Partial<SearchResult>): SearchResult {
+  return {
+    guid: 'r', title: 'Other', indexer: 'Idx', indexerId: 1, protocol: 'torrent', size: 1024, publishDate: '2026-11-01T00:00:00Z',
+    seeders: 1, leechers: 0, grabs: null, infoHash: 'abc', categories: [],
+    key: 'k', status: 'requestable', libraryItemId: null, token: `tok-${over.key ?? 'k'}`, ...over,
+  }
+}
+
+test('failed rows can switch to a different release', async () => {
+  let body: unknown
+  let q = ''
+  setup(
+    [act({ requestId: 2, title: 'Broken app', status: 'failed', error: 'Stale link' }), act({ requestId: 1, title: 'Slow app' })],
+    [
+      http.get('*/api/v1/search', ({ request }) => {
+        q = new URL(request.url).searchParams.get('q')!
+        return HttpResponse.json([found({ key: 'b', title: 'Fresh app' })])
+      }),
+      http.post('*/api/v1/requests/2/approve', async ({ request }) => { body = await request.json(); return HttpResponse.json({}) }),
+    ],
+  )
+  await screen.findByText('Broken app')
+  expect(within(row('Slow app')).queryByRole('button', { name: /different release/ })).not.toBeInTheDocument()
+  await userEvent.click(within(row('Broken app')).getByRole('button', { name: 'Use a different release for Broken app' }))
+  const dialog = await screen.findByRole('dialog')
+  const submit = within(dialog).getByRole('button', { name: 'Use this release' })
+  expect(submit).toBeDisabled()
+  expect(within(dialog).getByLabelText('Search for a replacement')).toHaveValue('Broken app')
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Search' }))
+  await userEvent.click(await within(dialog).findByRole('button', { name: 'Use Fresh app' }))
+  expect(q).toBe('Broken app')
+  await userEvent.click(submit)
+  await waitFor(() => expect(body).toEqual({ replacementToken: 'tok-b' }))
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
 })

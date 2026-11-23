@@ -2,6 +2,7 @@ package requests
 
 import (
 	"context"
+	"database/sql"
 	"net/http"
 	"sync"
 	"testing"
@@ -373,5 +374,105 @@ func TestApproveReplacementInLibraryRejected(t *testing.T) {
 	got, err := e.svc.Get(ctx, e.admin, r.ID)
 	require.NoError(t, err)
 	assert.Equal(t, Pending, got.Status)
+	assert.Equal(t, "a", got.Release.Title)
+}
+
+// failedDownload walks a request through a download that failed in the client.
+func (e env) failedDownload(t *testing.T, name string) Request {
+	t.Helper()
+	ctx := context.Background()
+	r, err := e.svc.Create(ctx, e.user, rel(name), "")
+	require.NoError(t, err)
+	_, err = e.svc.Approve(ctx, e.admin, r.ID, ApproveOpts{})
+	require.NoError(t, err)
+	_, err = e.svc.transition(ctx, r.ID, ActGrabbed, func(u *dbq.UpdateRequestParams) {
+		u.ClientID = sql.NullInt64{Int64: 1, Valid: true}
+		u.ClientItemID = "hash-" + name
+		u.Progress = 0.4
+		u.LastProgressAt = sql.NullInt64{Int64: 100, Valid: true}
+	})
+	require.NoError(t, err)
+	got, err := e.svc.transition(ctx, r.ID, ActClientError, func(u *dbq.UpdateRequestParams) { u.Error = "tracker gone" })
+	require.NoError(t, err)
+	require.Equal(t, Failed, got.Status)
+	return got
+}
+
+func TestReplaceReleaseOnFailedRequest(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	r := e.failedDownload(t, "a")
+
+	_, err := e.svc.Approve(ctx, e.admin, r.ID, ApproveOpts{})
+	require.Error(t, err, "a failed request needs a replacement; retry covers the rest")
+	assert.True(t, IsInputError(err))
+
+	repl := rel("b")
+	got, err := e.svc.Approve(ctx, e.admin, r.ID, ApproveOpts{DisplayTitle: "Nice B", Replacement: &repl})
+	require.NoError(t, err)
+	assert.Equal(t, Approved, got.Status)
+	assert.Equal(t, "b", got.Release.Title)
+	require.NotNil(t, got.OriginalRelease)
+	assert.Equal(t, "a", got.OriginalRelease.Title)
+	assert.Equal(t, "Nice B", got.DisplayTitle)
+	assert.Empty(t, got.Error)
+	assert.Zero(t, got.Progress)
+
+	// The worker must grab the new release, not re-attach to the old torrent.
+	row, err := e.q.GetRequest(ctx, r.ID)
+	require.NoError(t, err)
+	assert.False(t, row.ClientID.Valid)
+	assert.Empty(t, row.ClientItemID)
+	assert.False(t, row.LastProgressAt.Valid)
+	assert.Equal(t, rel("b").Key(), row.ReleaseKey)
+
+	n, err := e.q.ListNotifications(ctx, dbq.ListNotificationsParams{UserID: e.user.UserID, Column2: 0})
+	require.NoError(t, err)
+	assert.Equal(t, notify.EvRequestApproved, n[0].Type)
+}
+
+func TestReplaceOnFailedKeepsFirstOriginal(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	r, err := e.svc.Create(ctx, e.user, rel("a"), "")
+	require.NoError(t, err)
+	b := rel("b")
+	_, err = e.svc.Approve(ctx, e.admin, r.ID, ApproveOpts{Replacement: &b})
+	require.NoError(t, err)
+	_, err = e.svc.transition(ctx, r.ID, ActGrabFailed, func(u *dbq.UpdateRequestParams) { u.Error = "stale" })
+	require.NoError(t, err)
+	c := rel("c")
+	got, err := e.svc.Approve(ctx, e.admin, r.ID, ApproveOpts{Replacement: &c})
+	require.NoError(t, err)
+	assert.Equal(t, "c", got.Release.Title)
+	require.NotNil(t, got.OriginalRelease)
+	assert.Equal(t, "a", got.OriginalRelease.Title, "the release the user asked for stays as history")
+}
+
+func TestReplaceOnFailedChecks(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	r := e.failedDownload(t, "a")
+
+	_, err := e.svc.db.Exec(`INSERT INTO library_items (display_title, release_name, release_key, folder, imported_at) VALUES ('b','b',?, '/library/b', 1)`, rel("b").Key())
+	require.NoError(t, err)
+	b := rel("b")
+	_, err = e.svc.Approve(ctx, e.admin, r.ID, ApproveOpts{Replacement: &b})
+	assert.ErrorIs(t, err, ErrInLibrary)
+
+	_, err = e.svc.Create(ctx, e.other, rel("c"), "")
+	require.NoError(t, err)
+	c := rel("c")
+	_, err = e.svc.Approve(ctx, e.admin, r.ID, ApproveOpts{Replacement: &c})
+	assert.ErrorIs(t, err, ErrDuplicate)
+
+	u := prowlarr.Release{Title: "u", Protocol: "usenet", DownloadURL: "x"}
+	_, err = e.svc.Approve(ctx, e.admin, r.ID, ApproveOpts{Replacement: &u})
+	assert.ErrorIs(t, err, ErrNoClient)
+
+	got, err := e.svc.Get(ctx, e.admin, r.ID)
+	require.NoError(t, err)
+	assert.Equal(t, Failed, got.Status)
+	assert.Equal(t, "tracker gone", got.Error)
 	assert.Equal(t, "a", got.Release.Title)
 }

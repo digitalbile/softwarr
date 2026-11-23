@@ -165,6 +165,15 @@ func (s *Service) Approve(ctx context.Context, p auth.Principal, id int64, o App
 	if err != nil {
 		return Request{}, err
 	}
+	// A failed request can be approved again only with another release;
+	// retrying the same one is what Retry is for.
+	action := ActApprove
+	if cur.Status == Failed {
+		if o.Replacement == nil {
+			return Request{}, inputError("Choose a different release, or retry this request.")
+		}
+		action = ActReplace
+	}
 	rel := cur.Release
 	var replacement []byte
 	if o.Replacement != nil {
@@ -189,11 +198,23 @@ func (s *Service) Approve(ctx context.Context, p auth.Principal, id int64, o App
 	if title == "" {
 		title = rel.Title
 	}
-	req, err := s.transition(ctx, id, ActApprove, func(u *dbq.UpdateRequestParams) {
+	req, err := s.transition(ctx, id, action, func(u *dbq.UpdateRequestParams) {
 		if replacement != nil {
-			u.OriginalRelease = sql.NullString{String: u.Release, Valid: true}
+			// Keep the release the requester asked for as history.
+			if !u.OriginalRelease.Valid {
+				u.OriginalRelease = sql.NullString{String: u.Release, Valid: true}
+			}
 			u.Release = string(replacement)
 			u.ReleaseKey = rel.Key()
+		}
+		if action == ActReplace {
+			// Start over so the worker grabs the new release instead of
+			// re-attaching to the old download.
+			u.Error = ""
+			u.ClientID = sql.NullInt64{}
+			u.ClientItemID = ""
+			u.Progress = 0
+			u.LastProgressAt = sql.NullInt64{}
 		}
 		u.DisplayTitle = title
 		u.ApprovedBy = sql.NullInt64{Int64: p.UserID, Valid: true}
