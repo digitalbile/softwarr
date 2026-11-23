@@ -1,0 +1,60 @@
+# Example stack: softwarr, qBittorrent, and Prowlarr.
+#
+# All three containers use the same PUID, PGID, and UMASK. Linux blocks
+# hardlinks to files the linking user can't write (fs.protected_hardlinks=1),
+# so softwarr has to run as the same user as qBittorrent.
+#
+# One host folder, /srv/data, is mounted at /data in both qBittorrent and
+# softwarr. qBittorrent saves to /data/torrents and softwarr imports into
+# /data/library. They are on one filesystem, so imports are hardlinks and cost
+# no extra disk space. Because both containers see the same path, qBittorrent's
+# save paths already work in softwarr and no remote path mapping is needed.
+# Don't mount /data/torrents and /data/library as separate volumes. That puts
+# them on different mounts and hardlinks fail.
+
+services:
+  softwarr:
+    image: softwarr:latest # or build from this repository: build: ../
+    container_name: softwarr
+    environment:
+      PUID: "1000"
+      PGID: "1000"
+      UMASK: "022"
+      TZ: Etc/UTC
+    volumes:
+      - ./config/softwarr:/config
+      - /srv/data:/data
+    ports:
+      - "7979:7979"
+    restart: unless-stopped
+
+  qbittorrent:
+    image: lscr.io/linuxserver/qbittorrent:latest
+    container_name: qbittorrent
+    environment:
+      PUID: "1000"
+      PGID: "1000"
+      UMASK: "022"
+      TZ: Etc/UTC
+      WEBUI_PORT: "8080"
+    volumes:
+      - ./config/qbittorrent:/config
+      # Set the default save path in qBittorrent to /data/torrents.
+      - /srv/data:/data
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+
+  prowlarr:
+    image: lscr.io/linuxserver/prowlarr:latest
+    container_name: prowlarr
+    environment:
+      PUID: "1000"
+      PGID: "1000"
+      UMASK: "022"
+      TZ: Etc/UTC
+    volumes:
+      - ./config/prowlarr:/config
+    ports:
+      - "9696:9696"
+    restart: unless-stopped
