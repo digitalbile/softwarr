@@ -96,3 +96,10 @@ func TestSPAMissingIndexReturns503(t *testing.T) {
 		assert.Contains(t, readBody(t, resp), "The web UI hasn't been built. Run make web.")
 	}
 }
+
+func TestWrongMethodOnAPIRouteIs405(t *testing.T) {
+	ts := uiServer(t, "", testUI())
+	resp := ts.do("POST", "/api/v1/ping", nil)
+	assert.Equal(t, http.StatusMethodNotAllowed, resp.StatusCode)
+	assert.Contains(t, resp.Header.Get("Allow"), "GET")
+}

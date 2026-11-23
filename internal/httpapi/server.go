@@ -91,14 +91,10 @@ func New(d Deps) http.Handler {
 	s.registerLibraryRoutes(api)
 	s.registerSystemRoutes(api)
 
-	api.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
-		writeError(w, http.StatusNotFound, "Not found.")
-	})
-
 	spa := spaHandler(d.UI, d.URLBase)
 	inner := recoverer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(r.URL.Path, "/api/") {
-			s.authenticate(api).ServeHTTP(w, r)
+			s.authenticate(apiHandler(api)).ServeHTTP(w, r)
 			return
 		}
 		spa.ServeHTTP(w, r)
@@ -109,4 +105,39 @@ func New(d Deps) http.Handler {
 	root := http.NewServeMux()
 	root.Handle(d.URLBase+"/", http.StripPrefix(d.URLBase, inner))
 	return root
+}
+
+// apiHandler serves mux, but turns the mux's plain-text 404 for an unknown
+// path into the JSON error shape. Wrong-method 405 responses (with Allow)
+// pass through untouched.
+func apiHandler(mux *http.ServeMux) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Serve through the mux itself so path wildcards get populated.
+		if _, pattern := mux.Handler(r); pattern == "" {
+			w = &jsonNotFound{ResponseWriter: w}
+		}
+		mux.ServeHTTP(w, r)
+	})
+}
+
+// jsonNotFound rewrites a 404 written by the mux's default handler.
+type jsonNotFound struct {
+	http.ResponseWriter
+	rewritten bool
+}
+
+func (j *jsonNotFound) WriteHeader(code int) {
+	if code == http.StatusNotFound {
+		j.rewritten = true
+		writeError(j.ResponseWriter, code, "Not found.")
+		return
+	}
+	j.ResponseWriter.WriteHeader(code)
+}
+
+func (j *jsonNotFound) Write(b []byte) (int, error) {
+	if j.rewritten {
+		return len(b), nil
+	}
+	return j.ResponseWriter.Write(b)
 }
