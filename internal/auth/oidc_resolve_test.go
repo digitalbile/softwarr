@@ -451,6 +451,9 @@ func TestIsAdminByClaim(t *testing.T) {
 	}
 	_, applies := IsAdminByClaim(settings.OIDC{}, map[string]any{"groups": "admins"})
 	assert.False(t, applies)
+	// A claim without a value must not demote every SSO admin.
+	_, applies = IsAdminByClaim(settings.OIDC{AdminClaim: "groups"}, map[string]any{"groups": "admins"})
+	assert.False(t, applies)
 }
 
 func TestUsernameCollisionSuffix(t *testing.T) {
