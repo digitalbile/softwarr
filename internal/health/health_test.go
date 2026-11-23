@@ -205,3 +205,60 @@ func TestHealthLoopNotifiesOnlyOnNewFailures(t *testing.T) {
 func TestScrubStripsQueryStrings(t *testing.T) {
 	assert.Equal(t, `Get "http://h/x": refused`, scrub(`Get "http://h/x?apikey=abc&b=1": refused`))
 }
+
+func blocker(id string, release <-chan struct{}) task {
+	return task{id, "", func(context.Context) []Check { <-release; return nil }}
+}
+
+func TestWithTimeoutKeepsCheckID(t *testing.T) {
+	release := make(chan struct{})
+	defer close(release)
+	got := withTimeout(context.Background(), 20*time.Millisecond, task{"prowlarr", "Can't reach Prowlarr: it didn't respond within %s.", blocker("x", release).run})
+	require.Len(t, got, 1)
+	assert.Equal(t, "prowlarr", got[0].ID)
+	assert.Equal(t, "error", got[0].Level)
+	assert.Equal(t, "Can't reach Prowlarr: it didn't respond within 20ms.", got[0].Message)
+
+}
+
+func TestWithTimeoutDistinctIDs(t *testing.T) {
+	release := make(chan struct{})
+	defer close(release)
+	a := withTimeout(context.Background(), 10*time.Millisecond, blocker("downloadclient:1", release))
+	b := withTimeout(context.Background(), 10*time.Millisecond, blocker("downloadclient:2", release))
+	assert.Equal(t, "downloadclient:1", a[0].ID)
+	assert.Equal(t, "downloadclient:2", b[0].ID)
+	assert.Equal(t, "downloadclient:1 didn't respond within 10ms.", a[0].Message)
+}
+
+func TestHealthLoopTimeoutDoesNotRenotify(t *testing.T) {
+	e := newEnv(t)
+	e.c.timeout = 50 * time.Millisecond
+	release := make(chan struct{})
+	defer close(release)
+	// Prowlarr hangs.
+	e.c.newProwlarr = func(string, string) *prowlarr.Client {
+		return prowlarr.New("http://x", "k", &http.Client{Transport: hangTransport{release}})
+	}
+	ctx := context.Background()
+	admin, err := e.q.CreateUser(ctx, dbq.CreateUserParams{Username: "a", IsAdmin: 1, IsOwner: 1, Status: "active", CreatedAt: 1})
+	require.NoError(t, err)
+	e.c.runOnce(ctx)
+	e.c.runOnce(ctx)
+	m := byID(e.c.Run(ctx))
+	assert.Equal(t, "error", m["prowlarr"].Level)
+	ns, err := e.q.ListNotifications(ctx, dbq.ListNotificationsParams{UserID: admin.ID, Column2: 0})
+	require.NoError(t, err)
+	assert.Len(t, ns, 1)
+}
+
+type hangTransport struct{ release <-chan struct{} }
+
+func (h hangTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	select {
+	case <-r.Context().Done():
+		return nil, r.Context().Err()
+	case <-h.release:
+		return nil, errors.New("released")
+	}
+}

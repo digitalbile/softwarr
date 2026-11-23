@@ -3,6 +3,7 @@ package logbuf
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"strings"
 	"sync"
@@ -135,9 +136,14 @@ func addAttr(dst map[string]any, groups []string, a slog.Attr) {
 	if len(groups) > 0 {
 		key = strings.Join(groups, ".") + "." + key
 	}
-	v := a.Value.Any()
-	if err, ok := v.(error); ok {
-		v = err.Error()
+	var v any
+	switch a.Value.Kind() {
+	case slog.KindString, slog.KindInt64, slog.KindUint64, slog.KindFloat64, slog.KindBool:
+		v = a.Value.Any()
+	case slog.KindDuration, slog.KindTime:
+		v = a.Value.String()
+	default:
+		v = fmt.Sprint(a.Value.Any()) // errors and arbitrary values
 	}
 	dst[key] = v
 }

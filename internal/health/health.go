@@ -32,6 +32,8 @@ const (
 	LevelError   = "error"
 
 	checkTimeout = 10 * time.Second
+	// httpTimeout is a little under checkTimeout so a client's own error usually wins.
+	httpTimeout = 9 * time.Second
 )
 
 // Check is the result of one health check.
@@ -48,6 +50,7 @@ type Checker struct {
 	newClient   func(downloadclient.Config) (downloadclient.Client, error)
 	n           *notify.Service
 	b           *events.Broker
+	timeout     time.Duration
 
 	mu   sync.Mutex
 	prev map[string]string // check id to level from the previous loop run
@@ -57,15 +60,15 @@ type Checker struct {
 func NewChecker(q *dbq.Queries, s *settings.Store, newProwlarr func(url, key string) *prowlarr.Client, newClient func(downloadclient.Config) (downloadclient.Client, error), n *notify.Service, b *events.Broker) *Checker {
 	if newProwlarr == nil {
 		newProwlarr = func(url, key string) *prowlarr.Client {
-			return prowlarr.New(url, key, &http.Client{Timeout: checkTimeout})
+			return prowlarr.New(url, key, &http.Client{Timeout: httpTimeout})
 		}
 	}
 	if newClient == nil {
 		newClient = func(cfg downloadclient.Config) (downloadclient.Client, error) {
-			return downloadclient.New(cfg, &http.Client{Timeout: checkTimeout})
+			return downloadclient.New(cfg, &http.Client{Timeout: httpTimeout})
 		}
 	}
-	return &Checker{q: q, s: s, newProwlarr: newProwlarr, newClient: newClient, n: n, b: b}
+	return &Checker{q: q, s: s, newProwlarr: newProwlarr, newClient: newClient, n: n, b: b, timeout: checkTimeout}
 }
 
 var queryRe = regexp.MustCompile(`\?[^\s"'<>)]*`)
@@ -82,40 +85,41 @@ func fail(id, format string, a ...any) Check {
 // Run executes every check concurrently, each with its own 10 second limit,
 // and returns the results ordered by ID.
 func (c *Checker) Run(ctx context.Context) []Check {
-	var tasks []func(context.Context) []Check
+	var tasks []task
 	st, err := c.s.Get(ctx)
 	if err != nil {
 		return []Check{fail("settings", "Can't read the settings: %v", err)}
 	}
 	tasks = append(tasks,
-		func(ctx context.Context) []Check { return []Check{c.prowlarr(ctx, st)} },
-		func(ctx context.Context) []Check { return []Check{c.library(st)} },
-		func(ctx context.Context) []Check { return c.hardlinks(ctx) },
-		func(ctx context.Context) []Check { return c.oidc(ctx, st) },
+		task{"prowlarr", "Can't reach Prowlarr: it didn't respond within %s.", func(ctx context.Context) []Check { return []Check{c.prowlarr(ctx, st)} }},
+		task{"library", "The library folder check didn't respond within %s.", func(ctx context.Context) []Check { return []Check{c.library(st)} }},
+		task{"hardlinks", "The import check didn't respond within %s.", func(ctx context.Context) []Check { return c.hardlinks(ctx) }},
+		task{"oidc", "Can't reach the OIDC provider: it didn't respond within %s.", func(ctx context.Context) []Check { return c.oidc(ctx, st) }},
 	)
 	clients, err := c.q.ListDownloadClients(ctx)
 	if err != nil {
-		tasks = append(tasks, func(context.Context) []Check {
+		tasks = append(tasks, task{"downloadclients", "", func(context.Context) []Check {
 			return []Check{fail("downloadclients", "Can't read the download clients: %v", err)}
-		})
+		}})
 	}
 	enabled := false
 	for _, row := range clients {
 		if row.Enabled != 0 {
 			enabled = true
-			tasks = append(tasks, func(ctx context.Context) []Check { return []Check{c.downloadClient(ctx, row)} })
+			tasks = append(tasks, task{fmt.Sprintf("downloadclient:%d", row.ID), "Can't reach download client " + row.Name + ": it didn't respond within %s.",
+				func(ctx context.Context) []Check { return []Check{c.downloadClient(ctx, row)} }})
 		}
 	}
 	if err == nil {
 		if enabled {
-			tasks = append(tasks, func(context.Context) []Check { return []Check{ok("noclient", "A download client is enabled.")} })
+			tasks = append(tasks, task{"noclient", "", func(context.Context) []Check { return []Check{ok("noclient", "A download client is enabled.")} }})
 		} else {
-			tasks = append(tasks, func(context.Context) []Check {
+			tasks = append(tasks, task{"noclient", "", func(context.Context) []Check {
 				return []Check{warn("noclient", "No download client is enabled, so requests can't be downloaded.")}
-			})
+			}})
 		}
 	}
-	tasks = append(tasks, func(ctx context.Context) []Check { return c.pathMappings(ctx) })
+	tasks = append(tasks, task{"pathmappings", "The path mapping check didn't respond within %s.", func(ctx context.Context) []Check { return c.pathMappings(ctx) }})
 
 	results := make([][]Check, len(tasks))
 	var wg sync.WaitGroup
@@ -123,7 +127,7 @@ func (c *Checker) Run(ctx context.Context) []Check {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			results[i] = withTimeout(ctx, task)
+			results[i] = withTimeout(ctx, c.timeout, task)
 		}()
 	}
 	wg.Wait()
@@ -143,13 +147,21 @@ func (c *Checker) Run(ctx context.Context) []Check {
 	return out
 }
 
-// withTimeout runs task with a 10 second limit. A task that ignores its
-// context is abandoned and reported as timed out.
-func withTimeout(ctx context.Context, task func(context.Context) []Check) []Check {
-	tctx, cancel := context.WithTimeout(ctx, checkTimeout)
+// task is one check to run. timeoutMsg is a format taking the timeout; it is
+// the message reported under id when the task runs too long.
+type task struct {
+	id         string
+	timeoutMsg string
+	run        func(context.Context) []Check
+}
+
+// withTimeout runs t with a time limit. A task that ignores its context is
+// abandoned and reported as an error under its own ID.
+func withTimeout(ctx context.Context, limit time.Duration, t task) []Check {
+	tctx, cancel := context.WithTimeout(ctx, limit)
 	defer cancel()
 	done := make(chan []Check, 1)
-	go func() { done <- task(tctx) }()
+	go func() { done <- t.run(tctx) }()
 	select {
 	case r := <-done:
 		return r
@@ -160,8 +172,23 @@ func withTimeout(ctx context.Context, task func(context.Context) []Check) []Chec
 			return r
 		default:
 		}
-		return []Check{fail("timeout", "A health check took too long and was stopped.")}
+		format := t.timeoutMsg
+		if format == "" {
+			format = t.id + " didn't respond within %s."
+		}
+		return []Check{{ID: t.id, Level: LevelError, Message: fmt.Sprintf(format, humanDuration(limit))}}
 	}
+}
+
+func humanDuration(d time.Duration) string {
+	if d%time.Second == 0 {
+		n := int(d / time.Second)
+		if n == 1 {
+			return "1 second"
+		}
+		return fmt.Sprintf("%d seconds", n)
+	}
+	return d.String()
 }
 
 func (c *Checker) prowlarr(ctx context.Context, st settings.Settings) Check {
@@ -236,7 +263,7 @@ func (c *Checker) oidc(ctx context.Context, st settings.Settings) []Check {
 	if !st.OIDC.Enabled || st.OIDC.Issuer == "" {
 		return nil
 	}
-	hc := &http.Client{Timeout: checkTimeout}
+	hc := &http.Client{Timeout: httpTimeout}
 	if _, err := oidc.NewProvider(oidc.ClientContext(ctx, hc), st.OIDC.Issuer); err != nil {
 		return []Check{fail("oidc", "Can't reach the OIDC provider: %v", err)}
 	}
