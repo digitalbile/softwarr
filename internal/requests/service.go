@@ -300,7 +300,18 @@ func (s *Service) List(ctx context.Context, p auth.Principal, all bool) ([]Reque
 // column before the write. A request that changed underneath the caller gives
 // ErrConflict; one that is missing gives ErrNotFound.
 func (s *Service) transition(ctx context.Context, id int64, a Action, mutate func(*dbq.UpdateRequestParams)) (Request, error) {
-	row, err := s.q.GetRequest(ctx, id)
+	req, err := s.apply(ctx, s.q, id, a, mutate)
+	if err != nil {
+		return Request{}, err
+	}
+	s.publish(req)
+	return req, nil
+}
+
+// apply is transition without the publish, using q so that it can run inside
+// a caller's transaction. The caller publishes once the change is committed.
+func (s *Service) apply(ctx context.Context, q *dbq.Queries, id int64, a Action, mutate func(*dbq.UpdateRequestParams)) (Request, error) {
+	row, err := q.GetRequest(ctx, id)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Request{}, ErrNotFound
 	}
@@ -321,7 +332,7 @@ func (s *Service) transition(ctx context.Context, id int64, a Action, mutate fun
 	if mutate != nil {
 		mutate(&u)
 	}
-	n, err := s.q.UpdateRequest(ctx, u)
+	n, err := q.UpdateRequest(ctx, u)
 	if isUniqueViolation(err) {
 		return Request{}, ErrDuplicate
 	}
@@ -329,19 +340,14 @@ func (s *Service) transition(ctx context.Context, id int64, a Action, mutate fun
 		return Request{}, err
 	}
 	if n == 0 {
-		if _, err := s.q.GetRequest(ctx, id); errors.Is(err, sql.ErrNoRows) {
+		if _, err := q.GetRequest(ctx, id); errors.Is(err, sql.ErrNoRows) {
 			return Request{}, ErrNotFound
 		} else if err != nil {
 			return Request{}, err
 		}
 		return Request{}, ErrConflict
 	}
-	req, err := s.load(ctx, id)
-	if err != nil {
-		return Request{}, err
-	}
-	s.publish(req)
-	return req, nil
+	return loadWith(ctx, q, id)
 }
 
 // conflictIfInvalid reports a request that is no longer in a state the action
@@ -354,7 +360,11 @@ func conflictIfInvalid(err error) error {
 }
 
 func (s *Service) load(ctx context.Context, id int64) (Request, error) {
-	row, err := s.q.GetRequest(ctx, id)
+	return loadWith(ctx, s.q, id)
+}
+
+func loadWith(ctx context.Context, q *dbq.Queries, id int64) (Request, error) {
+	row, err := q.GetRequest(ctx, id)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Request{}, ErrNotFound
 	}

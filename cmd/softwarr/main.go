@@ -96,6 +96,13 @@ func run() error {
 
 	broker := events.NewBroker()
 	notifier := notify.New(q, broker, st, &http.Client{Timeout: 10 * time.Second}, time.Now)
+	requestSvc := requests.NewService(database, q, st, notifier, broker, time.Now)
+	worker := requests.NewWorker(requestSvc, q, st, &http.Client{Timeout: 60 * time.Second}, nil, time.Now)
+	workerDone := make(chan struct{})
+	go func() {
+		defer close(workerDone)
+		worker.Run(ctx, 15*time.Second)
+	}()
 	sseDone := make(chan struct{})
 	handler := httpapi.New(httpapi.Deps{
 		DB:       database,
@@ -106,7 +113,7 @@ func run() error {
 		OIDC:     auth.NewOIDC(st, q, database, time.Now),
 		Broker:   broker,
 		Notify:   notifier,
-		Requests: requests.NewService(database, q, st, notifier, broker, time.Now),
+		Requests: requestSvc,
 		Done:     sseDone,
 		URLBase:  cfg.URLBase,
 		Version:  version,
@@ -127,8 +134,11 @@ func run() error {
 		}
 	}()
 	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		stop()
+		<-workerDone
 		return fmt.Errorf("server failed: %w", err)
 	}
 	<-drained
+	<-workerDone // let an in-flight tick finish before the database closes
 	return nil
 }

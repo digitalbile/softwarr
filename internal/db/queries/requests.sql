@@ -36,3 +36,18 @@ UPDATE requests SET
     library_item_id = sqlc.arg(library_item_id),
     updated_at = sqlc.arg(updated_at)
 WHERE id = sqlc.arg(id) AND status = sqlc.arg(from_status);
+
+-- name: ListWorkerRequests :many
+SELECT * FROM requests
+WHERE status IN ('approved', 'downloading', 'importing')
+ORDER BY id;
+
+-- name: ListActivityRequests :many
+SELECT r.*, u.username AS requester FROM requests r
+JOIN users u ON u.id = r.requester_id
+WHERE r.status IN ('approved', 'downloading', 'importing', 'failed')
+ORDER BY r.id DESC;
+
+-- name: UpdateRequestProgress :execrows
+UPDATE requests SET progress = ?, last_progress_at = ?, updated_at = ?
+WHERE id = ? AND status = 'downloading';

@@ -100,6 +100,78 @@ func (q *Queries) InsertRequest(ctx context.Context, arg InsertRequestParams) (i
 	return id, err
 }
 
+const listActivityRequests = `-- name: ListActivityRequests :many
+SELECT r.id, r.requester_id, r.status, r."release", r.release_key, r.original_release, r.comment, r.display_title, r.deny_reason, r.error, r.client_id, r.client_item_id, r.progress, r.last_progress_at, r.approved_by, r.library_item_id, r.created_at, r.updated_at, u.username AS requester FROM requests r
+JOIN users u ON u.id = r.requester_id
+WHERE r.status IN ('approved', 'downloading', 'importing', 'failed')
+ORDER BY r.id DESC
+`
+
+type ListActivityRequestsRow struct {
+	ID              int64          `json:"id"`
+	RequesterID     int64          `json:"requester_id"`
+	Status          string         `json:"status"`
+	Release         string         `json:"release"`
+	ReleaseKey      string         `json:"release_key"`
+	OriginalRelease sql.NullString `json:"original_release"`
+	Comment         string         `json:"comment"`
+	DisplayTitle    string         `json:"display_title"`
+	DenyReason      string         `json:"deny_reason"`
+	Error           string         `json:"error"`
+	ClientID        sql.NullInt64  `json:"client_id"`
+	ClientItemID    string         `json:"client_item_id"`
+	Progress        float64        `json:"progress"`
+	LastProgressAt  sql.NullInt64  `json:"last_progress_at"`
+	ApprovedBy      sql.NullInt64  `json:"approved_by"`
+	LibraryItemID   sql.NullInt64  `json:"library_item_id"`
+	CreatedAt       int64          `json:"created_at"`
+	UpdatedAt       int64          `json:"updated_at"`
+	Requester       string         `json:"requester"`
+}
+
+func (q *Queries) ListActivityRequests(ctx context.Context) ([]ListActivityRequestsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listActivityRequests)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListActivityRequestsRow
+	for rows.Next() {
+		var i ListActivityRequestsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.RequesterID,
+			&i.Status,
+			&i.Release,
+			&i.ReleaseKey,
+			&i.OriginalRelease,
+			&i.Comment,
+			&i.DisplayTitle,
+			&i.DenyReason,
+			&i.Error,
+			&i.ClientID,
+			&i.ClientItemID,
+			&i.Progress,
+			&i.LastProgressAt,
+			&i.ApprovedBy,
+			&i.LibraryItemID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.Requester,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listAllRequests = `-- name: ListAllRequests :many
 SELECT r.id, r.requester_id, r.status, r."release", r.release_key, r.original_release, r.comment, r.display_title, r.deny_reason, r.error, r.client_id, r.client_item_id, r.progress, r.last_progress_at, r.approved_by, r.library_item_id, r.created_at, r.updated_at, u.username AS requester FROM requests r
 JOIN users u ON u.id = r.requester_id
@@ -243,6 +315,54 @@ func (q *Queries) ListRequestsByUser(ctx context.Context, requesterID int64) ([]
 	return items, nil
 }
 
+const listWorkerRequests = `-- name: ListWorkerRequests :many
+SELECT id, requester_id, status, "release", release_key, original_release, comment, display_title, deny_reason, error, client_id, client_item_id, progress, last_progress_at, approved_by, library_item_id, created_at, updated_at FROM requests
+WHERE status IN ('approved', 'downloading', 'importing')
+ORDER BY id
+`
+
+func (q *Queries) ListWorkerRequests(ctx context.Context) ([]Request, error) {
+	rows, err := q.db.QueryContext(ctx, listWorkerRequests)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Request
+	for rows.Next() {
+		var i Request
+		if err := rows.Scan(
+			&i.ID,
+			&i.RequesterID,
+			&i.Status,
+			&i.Release,
+			&i.ReleaseKey,
+			&i.OriginalRelease,
+			&i.Comment,
+			&i.DisplayTitle,
+			&i.DenyReason,
+			&i.Error,
+			&i.ClientID,
+			&i.ClientItemID,
+			&i.Progress,
+			&i.LastProgressAt,
+			&i.ApprovedBy,
+			&i.LibraryItemID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const updateRequest = `-- name: UpdateRequest :execrows
 UPDATE requests SET
     status = ?1,
@@ -299,6 +419,31 @@ func (q *Queries) UpdateRequest(ctx context.Context, arg UpdateRequestParams) (i
 		arg.UpdatedAt,
 		arg.ID,
 		arg.FromStatus,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const updateRequestProgress = `-- name: UpdateRequestProgress :execrows
+UPDATE requests SET progress = ?, last_progress_at = ?, updated_at = ?
+WHERE id = ? AND status = 'downloading'
+`
+
+type UpdateRequestProgressParams struct {
+	Progress       float64       `json:"progress"`
+	LastProgressAt sql.NullInt64 `json:"last_progress_at"`
+	UpdatedAt      int64         `json:"updated_at"`
+	ID             int64         `json:"id"`
+}
+
+func (q *Queries) UpdateRequestProgress(ctx context.Context, arg UpdateRequestProgressParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, updateRequestProgress,
+		arg.Progress,
+		arg.LastProgressAt,
+		arg.UpdatedAt,
+		arg.ID,
 	)
 	if err != nil {
 		return 0, err
