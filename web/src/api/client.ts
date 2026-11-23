@@ -45,5 +45,11 @@ export async function api<T>(path: string, init: RequestInit & { json?: unknown 
     throw new ApiError(message, res.status)
   }
   if (res.status === 204) return undefined as T
-  return (await res.json()) as T
+  const text = await res.text()
+  if (text === '') return undefined as T
+  try {
+    return JSON.parse(text) as T
+  } catch {
+    throw new ApiError('The server sent a response the app could not read.', res.status)
+  }
 }
