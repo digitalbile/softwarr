@@ -42,6 +42,8 @@ type fakeQbit struct {
 	lastFile     []byte
 	addJSON      bool
 	forceAddFail bool
+	dupStatus    int // when set, a duplicate add answers with this status
+	failStatus   int // when set, every add answers with this status
 	infoCalls    int
 }
 
@@ -120,6 +122,10 @@ func (f *fakeQbit) add(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte("Fails."))
 		return
 	}
+	if f.failStatus != 0 {
+		w.WriteHeader(f.failStatus)
+		return
+	}
 	if err := r.ParseMultipartForm(1 << 20); err != nil {
 		f.t.Errorf("parse multipart: %v", err)
 		w.WriteHeader(http.StatusBadRequest)
@@ -156,6 +162,11 @@ func (f *fakeQbit) add(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if _, dup := f.torrents[hash]; dup {
+		if f.dupStatus != 0 {
+			w.WriteHeader(f.dupStatus)
+			_, _ = w.Write([]byte("Torrent is already present"))
+			return
+		}
 		_, _ = w.Write([]byte("Fails."))
 		return
 	}
@@ -258,6 +269,31 @@ func TestQbitAddDuplicateReattaches(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, hash, id1)
 	assert.Equal(t, id1, id2)
+}
+
+// qBittorrent 5 answers a duplicate add with 409 Conflict rather than "Fails.".
+func TestQbitAddDuplicateConflictReattaches(t *testing.T) {
+	f := newFakeQbit(t)
+	f.dupStatus = http.StatusConflict
+	c := f.client(t, nil)
+	b, hash := sampleTorrent(t)
+	_, err := c.Add(context.Background(), downloadclient.AddRequest{TorrentFile: b})
+	require.NoError(t, err)
+	id, err := c.Add(context.Background(), downloadclient.AddRequest{TorrentFile: b})
+	require.NoError(t, err)
+	assert.Equal(t, hash, id)
+}
+
+func TestQbitAddErrorStatusAndNotPresentIsError(t *testing.T) {
+	f := newFakeQbit(t)
+	f.failStatus = http.StatusConflict
+	c := f.client(t, nil)
+	_, err := c.Add(context.Background(), downloadclient.AddRequest{MagnetURI: "magnet:?xt=urn:btih:" + strings.Repeat("ef", 20)})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "status 409")
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	assert.Equal(t, 1, f.infoCalls, "Add should check whether the torrent is already there")
 }
 
 func TestQbitAddFailsAndNotPresentIsError(t *testing.T) {
