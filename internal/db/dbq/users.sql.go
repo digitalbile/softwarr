@@ -7,6 +7,7 @@ package dbq
 
 import (
 	"context"
+	"database/sql"
 )
 
 const countUsers = `-- name: CountUsers :one
@@ -18,6 +19,61 @@ func (q *Queries) CountUsers(ctx context.Context) (int64, error) {
 	var count int64
 	err := row.Scan(&count)
 	return count, err
+}
+
+const createUser = `-- name: CreateUser :one
+INSERT INTO users (username, email, password_hash, is_owner, is_admin, auto_approve, status, must_change_password, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+RETURNING id, username, email, password_hash, is_owner, is_admin, auto_approve, status, must_change_password, created_at
+`
+
+type CreateUserParams struct {
+	Username           string         `json:"username"`
+	Email              sql.NullString `json:"email"`
+	PasswordHash       string         `json:"password_hash"`
+	IsOwner            int64          `json:"is_owner"`
+	IsAdmin            int64          `json:"is_admin"`
+	AutoApprove        int64          `json:"auto_approve"`
+	Status             string         `json:"status"`
+	MustChangePassword int64          `json:"must_change_password"`
+	CreatedAt          int64          `json:"created_at"`
+}
+
+func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, error) {
+	row := q.db.QueryRowContext(ctx, createUser,
+		arg.Username,
+		arg.Email,
+		arg.PasswordHash,
+		arg.IsOwner,
+		arg.IsAdmin,
+		arg.AutoApprove,
+		arg.Status,
+		arg.MustChangePassword,
+		arg.CreatedAt,
+	)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Username,
+		&i.Email,
+		&i.PasswordHash,
+		&i.IsOwner,
+		&i.IsAdmin,
+		&i.AutoApprove,
+		&i.Status,
+		&i.MustChangePassword,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const deleteUser = `-- name: DeleteUser :exec
+DELETE FROM users WHERE id = ?
+`
+
+func (q *Queries) DeleteUser(ctx context.Context, id int64) error {
+	_, err := q.db.ExecContext(ctx, deleteUser, id)
+	return err
 }
 
 const getUserByID = `-- name: GetUserByID :one
@@ -40,4 +96,112 @@ func (q *Queries) GetUserByID(ctx context.Context, id int64) (User, error) {
 		&i.CreatedAt,
 	)
 	return i, err
+}
+
+const getUserByUsername = `-- name: GetUserByUsername :one
+SELECT id, username, email, password_hash, is_owner, is_admin, auto_approve, status, must_change_password, created_at FROM users WHERE username = ?
+`
+
+func (q *Queries) GetUserByUsername(ctx context.Context, username string) (User, error) {
+	row := q.db.QueryRowContext(ctx, getUserByUsername, username)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Username,
+		&i.Email,
+		&i.PasswordHash,
+		&i.IsOwner,
+		&i.IsAdmin,
+		&i.AutoApprove,
+		&i.Status,
+		&i.MustChangePassword,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const listUsers = `-- name: ListUsers :many
+SELECT id, username, email, password_hash, is_owner, is_admin, auto_approve, status, must_change_password, created_at FROM users ORDER BY id
+`
+
+func (q *Queries) ListUsers(ctx context.Context) ([]User, error) {
+	rows, err := q.db.QueryContext(ctx, listUsers)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []User
+	for rows.Next() {
+		var i User
+		if err := rows.Scan(
+			&i.ID,
+			&i.Username,
+			&i.Email,
+			&i.PasswordHash,
+			&i.IsOwner,
+			&i.IsAdmin,
+			&i.AutoApprove,
+			&i.Status,
+			&i.MustChangePassword,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const setUserPassword = `-- name: SetUserPassword :exec
+UPDATE users SET password_hash = ?, must_change_password = 0 WHERE id = ?
+`
+
+type SetUserPasswordParams struct {
+	PasswordHash string `json:"password_hash"`
+	ID           int64  `json:"id"`
+}
+
+func (q *Queries) SetUserPassword(ctx context.Context, arg SetUserPasswordParams) error {
+	_, err := q.db.ExecContext(ctx, setUserPassword, arg.PasswordHash, arg.ID)
+	return err
+}
+
+const updateUserFields = `-- name: UpdateUserFields :exec
+UPDATE users SET is_admin = ?, auto_approve = ?, status = ?, email = ? WHERE id = ?
+`
+
+type UpdateUserFieldsParams struct {
+	IsAdmin     int64          `json:"is_admin"`
+	AutoApprove int64          `json:"auto_approve"`
+	Status      string         `json:"status"`
+	Email       sql.NullString `json:"email"`
+	ID          int64          `json:"id"`
+}
+
+func (q *Queries) UpdateUserFields(ctx context.Context, arg UpdateUserFieldsParams) error {
+	_, err := q.db.ExecContext(ctx, updateUserFields,
+		arg.IsAdmin,
+		arg.AutoApprove,
+		arg.Status,
+		arg.Email,
+		arg.ID,
+	)
+	return err
+}
+
+const userHasIdentity = `-- name: UserHasIdentity :one
+SELECT EXISTS (SELECT 1 FROM user_identities WHERE user_id = ?)
+`
+
+func (q *Queries) UserHasIdentity(ctx context.Context, userID int64) (bool, error) {
+	row := q.db.QueryRowContext(ctx, userHasIdentity, userID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
 }
