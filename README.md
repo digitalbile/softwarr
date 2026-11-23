@@ -66,10 +66,10 @@ It prints a temporary password, ends the owner's sessions, and asks for a new pa
 
 softwarr supports one OIDC provider alongside local accounts. The owner account is always local, and the local login form stays available in case your provider is down.
 
-1. In Settings, General, set the External URL to the public address of softwarr, for example `https://softwarr.example.com`. OIDC can't be enabled without it.
+1. In Settings, General, set the External URL to the public address of softwarr, for example `https://softwarr.example.com`. If you set `SOFTWARR_URL_BASE`, include it, for example `https://example.com/softwarr`. OIDC can't be enabled without it, and webhook links use it too.
 2. In your identity provider, create an OIDC client and set the redirect URI to `<external URL>/api/v1/auth/oidc/callback`.
 3. In Settings, Authentication, enter the issuer URL, client ID, and client secret, then turn on single sign-on.
-4. Optional: to give admin rights through a group, set the claim name (for example `groups`) and the admin value (for example `softwarr-admins`). OIDC users gain or lose admin status from that group each time they sign in. Local-only users aren't affected.
+4. Optional: to give admin rights through a group, set the claim name (for example `groups`) and the admin value (for example `softwarr-admins`). Set both or neither. OIDC users gain or lose admin status from that group each time they sign in. Local-only users aren't affected.
 
 ## Development
 
