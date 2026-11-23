@@ -8,6 +8,7 @@ import (
 
 	"github.com/digitalbile/softwarr/internal/auth"
 	"github.com/digitalbile/softwarr/internal/db/dbq"
+	"github.com/digitalbile/softwarr/internal/events"
 	"github.com/digitalbile/softwarr/internal/settings"
 )
 
@@ -18,9 +19,12 @@ type Deps struct {
 	Users    *auth.Users
 	Sessions *auth.Sessions
 	OIDC     *auth.OIDC
-	URLBase  string
-	Version  string
-	Now      func() time.Time
+	Broker   *events.Broker
+	// PingInterval is the SSE keepalive period; zero means 25s.
+	PingInterval time.Duration
+	URLBase      string
+	Version      string
+	Now          func() time.Time
 }
 
 type server struct {
@@ -32,6 +36,12 @@ func New(d Deps) http.Handler {
 	if d.Now == nil {
 		d.Now = time.Now
 	}
+	if d.PingInterval == 0 {
+		d.PingInterval = defaultPingInterval
+	}
+	if d.Broker == nil {
+		d.Broker = events.NewBroker()
+	}
 	s := &server{Deps: d}
 	api := http.NewServeMux()
 	api.HandleFunc("GET /api/v1/ping", func(w http.ResponseWriter, r *http.Request) {
@@ -41,6 +51,7 @@ func New(d Deps) http.Handler {
 	s.registerOIDCRoutes(api)
 	s.registerUserRoutes(api)
 	s.registerSettingsRoutes(api)
+	s.registerEventRoutes(api)
 
 	inner := recoverer(s.authenticate(api))
 	if d.URLBase == "" {

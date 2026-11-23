@@ -14,6 +14,7 @@ import (
 
 	"github.com/digitalbile/softwarr/internal/auth"
 	"github.com/digitalbile/softwarr/internal/db/dbq"
+	"github.com/digitalbile/softwarr/internal/events"
 	"github.com/digitalbile/softwarr/internal/settings"
 	"github.com/digitalbile/softwarr/internal/testutil"
 	"github.com/stretchr/testify/require"
@@ -67,13 +68,15 @@ func newTestServerBase(t *testing.T, urlBase string) *testServer {
 	st := settings.NewStore(q)
 	deps := Deps{
 		DB: d, Q: q,
-		Settings: st,
-		Users:    auth.NewUsers(d, q),
-		Sessions: auth.NewSessions(q, clock.Now),
-		OIDC:     auth.NewOIDC(st, q, d, clock.Now),
-		URLBase:  urlBase,
-		Version:  "test",
-		Now:      clock.Now,
+		Settings:     st,
+		Users:        auth.NewUsers(d, q),
+		Sessions:     auth.NewSessions(q, clock.Now),
+		OIDC:         auth.NewOIDC(st, q, d, clock.Now),
+		Broker:       events.NewBroker(),
+		PingInterval: 20 * time.Millisecond,
+		URLBase:      urlBase,
+		Version:      "test",
+		Now:          clock.Now,
 	}
 	srv := httptest.NewServer(New(deps))
 	t.Cleanup(srv.Close)
