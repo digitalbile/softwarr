@@ -53,3 +53,7 @@ export async function api<T>(path: string, init: RequestInit & { json?: unknown 
     throw new ApiError('The server sent a response the app could not read.', res.status)
   }
 }
+
+export function isConflict(err: unknown): boolean {
+  return err instanceof ApiError && err.status === 409
+}

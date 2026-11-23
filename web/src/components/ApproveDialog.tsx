@@ -1,9 +1,8 @@
 import { useState } from 'react'
 import { Alert, Button, Group, Loader, Modal, Stack, Text, TextInput } from '@mantine/core'
 import { useQuery } from '@tanstack/react-query'
-import { api } from '../api/client'
+import { api, isConflict } from '../api/client'
 import type { Release, Request, SearchResult } from '../api/types'
-import { isConflict } from '../pages/admin/useRequestAction'
 import { toRelease } from '../releases'
 import { ReleaseTable } from './ReleaseTable'
 

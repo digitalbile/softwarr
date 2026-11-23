@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Alert, Badge, Button, Group, Loader, Modal, Progress, Stack, Table, Text, Title } from '@mantine/core'
 import { useQuery } from '@tanstack/react-query'
-import { api } from '../../api/client'
+import { api, isConflict } from '../../api/client'
 import type { Activity } from '../../api/types'
 import { StatusBadge } from '../../components/StatusBadge'
 import { useRequestAction } from './useRequestAction'
@@ -18,7 +18,7 @@ export function ActivityPage() {
       await perform(id, action)
     } catch (err) {
       // Conflicts are shown through `conflict`.
-      if ((err as { status?: number }).status !== 409) setActionError((err as Error).message)
+      if (!isConflict(err)) setActionError((err as Error).message)
     }
   }
 

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Alert, Button, Group, Modal, Stack, Text, Textarea } from '@mantine/core'
+import { isConflict } from '../api/client'
 import type { Request } from '../api/types'
-import { isConflict } from '../pages/admin/useRequestAction'
 
 interface Props {
   request: Request | null
