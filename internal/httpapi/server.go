@@ -9,6 +9,7 @@ import (
 	"github.com/digitalbile/softwarr/internal/auth"
 	"github.com/digitalbile/softwarr/internal/db/dbq"
 	"github.com/digitalbile/softwarr/internal/events"
+	"github.com/digitalbile/softwarr/internal/notify"
 	"github.com/digitalbile/softwarr/internal/settings"
 )
 
@@ -20,6 +21,7 @@ type Deps struct {
 	Sessions *auth.Sessions
 	OIDC     *auth.OIDC
 	Broker   *events.Broker
+	Notify   *notify.Service
 	// Done, when closed, ends open SSE streams so server shutdown can drain.
 	Done <-chan struct{}
 	// PingInterval is the SSE keepalive period; zero means 25s.
@@ -54,6 +56,8 @@ func New(d Deps) http.Handler {
 	s.registerUserRoutes(api)
 	s.registerSettingsRoutes(api)
 	s.registerEventRoutes(api)
+	s.registerNotificationRoutes(api)
+	s.registerWebhookRoutes(api)
 
 	inner := recoverer(s.authenticate(api))
 	if d.URLBase == "" {

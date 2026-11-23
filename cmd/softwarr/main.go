@@ -19,6 +19,7 @@ import (
 	"github.com/digitalbile/softwarr/internal/db/dbq"
 	"github.com/digitalbile/softwarr/internal/events"
 	"github.com/digitalbile/softwarr/internal/httpapi"
+	"github.com/digitalbile/softwarr/internal/notify"
 	"github.com/digitalbile/softwarr/internal/settings"
 )
 
@@ -91,6 +92,8 @@ func run() error {
 	q := dbq.New(database)
 	st := settings.NewStore(q)
 
+	broker := events.NewBroker()
+	notifier := notify.New(q, broker, st, &http.Client{Timeout: 10 * time.Second}, time.Now)
 	sseDone := make(chan struct{})
 	handler := httpapi.New(httpapi.Deps{
 		DB:       database,
@@ -99,7 +102,8 @@ func run() error {
 		Users:    auth.NewUsers(database, q),
 		Sessions: auth.NewSessions(q, time.Now),
 		OIDC:     auth.NewOIDC(st, q, database, time.Now),
-		Broker:   events.NewBroker(),
+		Broker:   broker,
+		Notify:   notifier,
 		Done:     sseDone,
 		URLBase:  cfg.URLBase,
 		Version:  version,
