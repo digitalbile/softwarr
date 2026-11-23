@@ -224,3 +224,65 @@ func TestURLBasePrefix(t *testing.T) {
 	require.NotEmpty(t, resp.Cookies())
 	assert.Equal(t, "/sw/", resp.Cookies()[0].Path)
 }
+
+func sessionCookies(resp *http.Response) []*http.Cookie {
+	var out []*http.Cookie
+	for _, c := range resp.Cookies() {
+		if c.Name == "softwarr_session" {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+func TestTransientErrorKeepsSession(t *testing.T) {
+	ts := newTestServer(t)
+	ts.loginAsOwner()
+	count := func() int {
+		var n int
+		require.NoError(t, ts.DB.QueryRow(`SELECT COUNT(*) FROM sessions`).Scan(&n))
+		return n
+	}
+	require.Equal(t, 1, count())
+
+	// Break a table that Users.Get reads after the user row loads.
+	_, err := ts.DB.Exec(`ALTER TABLE user_identities RENAME TO user_identities_off`)
+	require.NoError(t, err)
+	resp := ts.do("GET", "/api/v1/auth/me", nil)
+	assert.Equal(t, http.StatusInternalServerError, resp.StatusCode)
+	assert.Equal(t, "Something went wrong.", errorBody(t, resp))
+	assert.Equal(t, 1, count(), "session survives a database error")
+
+	_, err = ts.DB.Exec(`ALTER TABLE user_identities_off RENAME TO user_identities`)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusOK, ts.do("GET", "/api/v1/auth/me", nil).StatusCode)
+}
+
+func TestCookieReissuedOnlyWhenExtended(t *testing.T) {
+	ts := newTestServer(t)
+	ts.loginAsOwner()
+
+	resp := ts.do("GET", "/api/v1/auth/me", nil)
+	assert.Empty(t, sessionCookies(resp), "plenty of time left, no new cookie")
+
+	ts.Clock.Advance(20 * 24 * time.Hour)
+	resp = ts.do("GET", "/api/v1/auth/me", nil)
+	cs := sessionCookies(resp)
+	require.Len(t, cs, 1)
+	want := ts.Clock.Now().Add(30 * 24 * time.Hour)
+	assert.WithinDuration(t, want, cs[0].Expires, 2*time.Second)
+
+	resp = ts.do("GET", "/api/v1/auth/me", nil)
+	assert.Empty(t, sessionCookies(resp), "just extended, no new cookie")
+}
+
+func TestLogoutSendsOneSessionCookie(t *testing.T) {
+	ts := newTestServer(t)
+	ts.loginAsOwner()
+	ts.Clock.Advance(20 * 24 * time.Hour) // forces an extension on this request
+	resp := ts.do("POST", "/api/v1/auth/logout", nil)
+	assert.Equal(t, http.StatusNoContent, resp.StatusCode)
+	cs := sessionCookies(resp)
+	require.Len(t, cs, 1)
+	assert.Equal(t, -1, cs[0].MaxAge)
+}

@@ -55,29 +55,32 @@ func (s *Sessions) Create(ctx context.Context, userID int64) (string, time.Time,
 	return token, expires, nil
 }
 
-// Lookup returns the session's user and slides the expiry forward when less
-// than half the lifetime remains.
-func (s *Sessions) Lookup(ctx context.Context, token string) (int64, error) {
+// Lookup returns the session's user and expiry. It slides the expiry forward
+// when less than half the lifetime remains, reporting that as extended.
+// Unknown and expired tokens return ErrNoSession.
+func (s *Sessions) Lookup(ctx context.Context, token string) (userID int64, expires time.Time, extended bool, err error) {
 	h := hashToken(token)
 	row, err := s.q.GetSession(ctx, h)
 	if errors.Is(err, sql.ErrNoRows) {
-		return 0, ErrNoSession
+		return 0, time.Time{}, false, ErrNoSession
 	}
 	if err != nil {
-		return 0, err
+		return 0, time.Time{}, false, err
 	}
 	now := s.now()
-	expires := time.Unix(row.ExpiresAt, 0)
+	expires = time.Unix(row.ExpiresAt, 0)
 	if !expires.After(now) {
 		_ = s.q.DeleteSession(ctx, h)
-		return 0, ErrNoSession
+		return 0, time.Time{}, false, ErrNoSession
 	}
 	if expires.Sub(now) < sessionExtendAt {
-		if err := s.q.ExtendSession(ctx, dbq.ExtendSessionParams{ExpiresAt: now.Add(sessionLifetime).Unix(), TokenHash: h}); err != nil {
-			return 0, err
+		expires = now.Add(sessionLifetime)
+		if err := s.q.ExtendSession(ctx, dbq.ExtendSessionParams{ExpiresAt: expires.Unix(), TokenHash: h}); err != nil {
+			return 0, time.Time{}, false, err
 		}
+		extended = true
 	}
-	return row.UserID, nil
+	return row.UserID, expires, extended, nil
 }
 
 func (s *Sessions) Delete(ctx context.Context, token string) error {
