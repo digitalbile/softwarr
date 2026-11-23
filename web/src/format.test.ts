@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { formatAge, formatBytes } from './format'
+import { formatAge, formatBytes, formatCategories } from './format'
 
 test('formatBytes and formatAge', () => {
   expect(formatBytes(0)).toBe('0 B')
@@ -13,4 +13,11 @@ test('formatBytes and formatAge', () => {
   expect(formatAge('2026-11-23T07:00:00Z', now)).toBe('5h')
   expect(formatAge('2026-11-23T11:20:00Z', now)).toBe('40m')
   expect(formatAge('2026-11-23T12:00:30Z', now)).toBe('0m')
+})
+
+test('formatCategories names the standard PC categories', () => {
+  expect(formatCategories([4000, 4010, 4020])).toBe('PC, PC/0day, PC/ISO')
+  expect(formatCategories([4030, 4050])).toBe('PC/Mac, PC/Games')
+  expect(formatCategories([4000, 100123])).toBe('PC, 100123')
+  expect(formatCategories([])).toBe('')
 })

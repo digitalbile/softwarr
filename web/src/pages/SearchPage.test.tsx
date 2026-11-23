@@ -2,7 +2,7 @@ import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { focusManager } from '@tanstack/react-query'
 import { http, HttpResponse } from 'msw'
-import { expect, test } from 'vitest'
+import { expect, test, vi } from 'vitest'
 import type { SearchResult } from '../api/types'
 import { makeUser, server } from '../test/server'
 import { FakeEventSource, renderApp, useApiServer } from '../test/utils'
@@ -50,6 +50,24 @@ test('search renders results with correct badges', async () => {
   expect(within(row('Delta app')).getByRole('button', { name: /Request/ })).toBeInTheDocument()
   expect(within(row('Delta app')).getByText('1.0 GiB')).toBeInTheDocument()
   expect(within(row('Delta app')).getByText('3d')).toBeInTheDocument()
+  expect(screen.getByRole('columnheader', { name: 'Category' })).toBeInTheDocument()
+  expect(within(row('Delta app')).getByText('PC')).toBeInTheDocument()
+})
+
+test('the same release from two indexers renders as two rows without key clashes', async () => {
+  const errors = vi.spyOn(console, 'error').mockImplementation(() => {})
+  setup({}, () =>
+    HttpResponse.json([
+      result({ key: 'ih:same', title: 'Twin app', indexer: 'One', indexerId: 1 }),
+      result({ key: 'ih:same', title: 'Twin app', indexer: 'Two', indexerId: 2, categories: [4020, 100001] }),
+    ]),
+  )
+  await runSearch()
+  await waitFor(() => expect(screen.getAllByText('Twin app')).toHaveLength(2))
+  expect(screen.getByText('PC/ISO, 100001')).toBeInTheDocument()
+  const clashes = errors.mock.calls.filter((c) => String(c[0]).includes('same key'))
+  errors.mockRestore()
+  expect(clashes).toEqual([])
 })
 
 test('no_client results have no request button', async () => {
