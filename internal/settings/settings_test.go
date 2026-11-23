@@ -150,3 +150,25 @@ func TestReleaseSecretGeneratedPersistedAndKeptOutOfSettings(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, key, after)
 }
+
+func TestAdminClaimAndValueGoTogether(t *testing.T) {
+	_, q := testutil.NewDB(t)
+	s := NewStore(q)
+	ctx := context.Background()
+	const msg = "Set both the admin claim and the admin value, or leave both empty."
+	for _, tc := range []struct{ claim, value string }{{"groups", ""}, {"groups", "   "}, {"", "admins"}} {
+		in, err := s.Get(ctx)
+		require.NoError(t, err)
+		in.OIDC.AdminClaim, in.OIDC.AdminValue = tc.claim, tc.value
+		err = s.Save(ctx, in)
+		require.Error(t, err, "%+v", tc)
+		assert.True(t, IsInputError(err))
+		assert.Equal(t, msg, err.Error())
+	}
+	in, err := s.Get(ctx)
+	require.NoError(t, err)
+	in.OIDC.AdminClaim, in.OIDC.AdminValue = "groups", "admins"
+	require.NoError(t, s.Save(ctx, in))
+	in.OIDC.AdminClaim, in.OIDC.AdminValue = "", ""
+	require.NoError(t, s.Save(ctx, in))
+}

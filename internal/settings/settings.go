@@ -141,6 +141,10 @@ func validate(in Settings) error {
 	if in.StallHours < 0 {
 		return errInput("Stall hours cannot be negative.")
 	}
+	// A claim without a value would make every SSO login lose admin.
+	if (strings.TrimSpace(in.OIDC.AdminClaim) == "") != (strings.TrimSpace(in.OIDC.AdminValue) == "") {
+		return errInput("Set both the admin claim and the admin value, or leave both empty.")
+	}
 	return nil
 }
 

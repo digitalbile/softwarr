@@ -38,6 +38,12 @@ func TestPutSettingsValidation(t *testing.T) {
 	resp := ts.do("PUT", "/api/v1/settings", st)
 	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
 	assert.Equal(t, "Set the external URL before enabling OIDC.", errorBody(t, resp))
+
+	st.OIDC.Enabled = false
+	st.OIDC.AdminClaim = "groups"
+	resp = ts.do("PUT", "/api/v1/settings", st)
+	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+	assert.Equal(t, "Set both the admin claim and the admin value, or leave both empty.", errorBody(t, resp))
 }
 
 func TestRegenerateAPIKey(t *testing.T) {

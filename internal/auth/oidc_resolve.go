@@ -233,16 +233,13 @@ func syncAdmin(ctx context.Context, q *dbq.Queries, cfg settings.OIDC, c Claims,
 }
 
 // IsAdminByClaim reports whether raw grants admin under the configured claim.
-// The claim may hold a string or an array of strings. applies is false when
-// no admin claim is configured.
+// The claim may hold a string or an array of strings. applies is false unless
+// both the admin claim and the admin value are configured.
 func IsAdminByClaim(cfg settings.OIDC, raw map[string]any) (isAdmin bool, applies bool) {
 	claim := strings.TrimSpace(cfg.AdminClaim)
-	if claim == "" {
-		return false, false
-	}
 	want := strings.TrimSpace(cfg.AdminValue)
-	if want == "" {
-		return false, true
+	if claim == "" || want == "" {
+		return false, false
 	}
 	switch v := raw[claim].(type) {
 	case string:
