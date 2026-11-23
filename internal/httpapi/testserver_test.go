@@ -64,11 +64,13 @@ func newTestServerBase(t *testing.T, urlBase string) *testServer {
 	d, q := testutil.NewDB(t)
 	// Start at the real time: the cookie jar judges cookie expiry by the wall clock.
 	clock := &fakeClock{t: time.Now()}
+	st := settings.NewStore(q)
 	deps := Deps{
 		DB: d, Q: q,
-		Settings: settings.NewStore(q),
+		Settings: st,
 		Users:    auth.NewUsers(d, q),
 		Sessions: auth.NewSessions(q, clock.Now),
+		OIDC:     auth.NewOIDC(st, q, d, clock.Now),
 		URLBase:  urlBase,
 		Version:  "test",
 		Now:      clock.Now,

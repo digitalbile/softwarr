@@ -17,6 +17,7 @@ type Deps struct {
 	Settings *settings.Store
 	Users    *auth.Users
 	Sessions *auth.Sessions
+	OIDC     *auth.OIDC
 	URLBase  string
 	Version  string
 	Now      func() time.Time
@@ -37,6 +38,7 @@ func New(d Deps) http.Handler {
 		writeJSON(w, http.StatusOK, map[string]string{"version": s.Version})
 	})
 	s.registerAuthRoutes(api)
+	s.registerOIDCRoutes(api)
 	s.registerUserRoutes(api)
 	s.registerSettingsRoutes(api)
 
