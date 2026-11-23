@@ -54,6 +54,6 @@ export async function api<T>(path: string, init: RequestInit & { json?: unknown 
   }
 }
 
-export function isConflict(err: unknown): boolean {
+export function isConflict(err: unknown): err is ApiError {
   return err instanceof ApiError && err.status === 409
 }
