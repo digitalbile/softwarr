@@ -136,9 +136,15 @@ func provision(ctx context.Context, q *dbq.Queries, cfg settings.OIDC, c Claims)
 	if cfg.AutoProvision {
 		status = "active"
 	}
+	// Only keep an email the provider vouches for. A stored email is what
+	// "link by verified email" and the email-taken check match on later.
+	var email sql.NullString
+	if c.EmailVerified {
+		email = nullEmail(c.Email)
+	}
 	row, err := q.CreateUser(ctx, dbq.CreateUserParams{
 		Username:  name,
-		Email:     nullEmail(c.Email),
+		Email:     email,
 		Status:    status,
 		CreatedAt: time.Now().Unix(),
 	})
