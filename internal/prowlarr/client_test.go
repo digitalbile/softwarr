@@ -113,9 +113,9 @@ func TestIndexersAndPing(t *testing.T) {
 	require.NoError(t, c.Ping(context.Background()))
 }
 
-func TestMagnetInfoHash(t *testing.T) {
-	assert.Equal(t, "abcdef0123456789abcdef0123456789abcdef01",
-		magnetInfoHash("magnet:?dn=x&xt=urn:btih:ABCDEF0123456789ABCDEF0123456789ABCDEF01"))
-	assert.Empty(t, magnetInfoHash("http://example.com"))
-	assert.Empty(t, magnetInfoHash("magnet:?xt=urn:btih:short"))
+func TestReleaseInfoHashFromMagnet(t *testing.T) {
+	r := wireRelease{MagnetURL: "magnet:?dn=x&xt=urn:btih:ABCDEF0123456789ABCDEF0123456789ABCDEF01"}.release()
+	assert.Equal(t, "abcdef0123456789abcdef0123456789abcdef01", r.InfoHash)
+	r = wireRelease{MagnetURL: "magnet:?xt=urn:btih:short"}.release()
+	assert.Empty(t, r.InfoHash)
 }

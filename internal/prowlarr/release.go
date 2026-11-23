@@ -3,6 +3,8 @@ package prowlarr
 import (
 	"strings"
 	"time"
+
+	"github.com/digitalbile/softwarr/internal/torrentfile"
 )
 
 // Release is one search result from Prowlarr.
@@ -76,7 +78,7 @@ func (w wireRelease) release() Release {
 		Categories: flattenCategories(nil, w.Categories),
 	}
 	if r.InfoHash == "" && r.MagnetURL != "" {
-		r.InfoHash = magnetInfoHash(r.MagnetURL)
+		r.InfoHash, _ = torrentfile.ParseMagnet(r.MagnetURL)
 	}
 	return r
 }
@@ -90,25 +92,4 @@ func flattenCategories(out []int, cats []wireCategory) []int {
 		out = flattenCategories(out, c.SubCategories)
 	}
 	return out
-}
-
-// magnetInfoHash returns the lowercase hex infohash from a magnet link's
-// xt=urn:btih: parameter, or "" if it isn't the 40-character hex form.
-// TODO(task 12): replace with torrentfile.ParseMagnet, which also handles base32.
-func magnetInfoHash(magnet string) string {
-	i := strings.Index(magnet, "?")
-	if !strings.HasPrefix(strings.ToLower(magnet), "magnet:") || i < 0 {
-		return ""
-	}
-	for _, kv := range strings.Split(magnet[i+1:], "&") {
-		v, ok := strings.CutPrefix(kv, "xt=urn:btih:")
-		if !ok || len(v) != 40 {
-			continue
-		}
-		v = strings.ToLower(v)
-		if strings.Trim(v, "0123456789abcdef") == "" {
-			return v
-		}
-	}
-	return ""
 }
