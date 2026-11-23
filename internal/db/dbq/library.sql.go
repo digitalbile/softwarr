@@ -10,6 +10,63 @@ import (
 	"database/sql"
 )
 
+const getAvailableLibraryItem = `-- name: GetAvailableLibraryItem :one
+SELECT li.id, li.display_title, li.release_name, li.folder, li.total_size, li.protocol, li.indexer, li.import_mode,
+       li.retention_days, li.imported_at, li.last_downloaded_at, li.download_count,
+       CAST(COALESCE(r.requester_id, 0) AS INTEGER) AS requester_id,
+       CAST(COALESCE(u.username, '') AS TEXT) AS requester,
+       CAST(COALESCE(r.comment, '') AS TEXT) AS comment,
+       CAST(COALESCE(a.username, '') AS TEXT) AS approver
+FROM library_items li
+LEFT JOIN requests r ON r.id = li.request_id
+LEFT JOIN users u ON u.id = r.requester_id
+LEFT JOIN users a ON a.id = r.approved_by
+WHERE li.id = ? AND li.status = 'available'
+`
+
+type GetAvailableLibraryItemRow struct {
+	ID               int64         `json:"id"`
+	DisplayTitle     string        `json:"display_title"`
+	ReleaseName      string        `json:"release_name"`
+	Folder           string        `json:"folder"`
+	TotalSize        int64         `json:"total_size"`
+	Protocol         string        `json:"protocol"`
+	Indexer          string        `json:"indexer"`
+	ImportMode       string        `json:"import_mode"`
+	RetentionDays    sql.NullInt64 `json:"retention_days"`
+	ImportedAt       int64         `json:"imported_at"`
+	LastDownloadedAt sql.NullInt64 `json:"last_downloaded_at"`
+	DownloadCount    int64         `json:"download_count"`
+	RequesterID      int64         `json:"requester_id"`
+	Requester        string        `json:"requester"`
+	Comment          string        `json:"comment"`
+	Approver         string        `json:"approver"`
+}
+
+func (q *Queries) GetAvailableLibraryItem(ctx context.Context, id int64) (GetAvailableLibraryItemRow, error) {
+	row := q.db.QueryRowContext(ctx, getAvailableLibraryItem, id)
+	var i GetAvailableLibraryItemRow
+	err := row.Scan(
+		&i.ID,
+		&i.DisplayTitle,
+		&i.ReleaseName,
+		&i.Folder,
+		&i.TotalSize,
+		&i.Protocol,
+		&i.Indexer,
+		&i.ImportMode,
+		&i.RetentionDays,
+		&i.ImportedAt,
+		&i.LastDownloadedAt,
+		&i.DownloadCount,
+		&i.RequesterID,
+		&i.Requester,
+		&i.Comment,
+		&i.Approver,
+	)
+	return i, err
+}
+
 const insertLibraryFile = `-- name: InsertLibraryFile :exec
 INSERT INTO library_files (item_id, rel_path, size) VALUES (?, ?, ?)
 `
@@ -60,4 +117,192 @@ func (q *Queries) InsertLibraryItem(ctx context.Context, arg InsertLibraryItemPa
 	var id int64
 	err := row.Scan(&id)
 	return id, err
+}
+
+const listAllAvailableLibraryFiles = `-- name: ListAllAvailableLibraryFiles :many
+SELECT f.item_id, f.rel_path, f.size FROM library_files f
+JOIN library_items li ON li.id = f.item_id
+WHERE li.status = 'available' ORDER BY f.id
+`
+
+type ListAllAvailableLibraryFilesRow struct {
+	ItemID  int64  `json:"item_id"`
+	RelPath string `json:"rel_path"`
+	Size    int64  `json:"size"`
+}
+
+func (q *Queries) ListAllAvailableLibraryFiles(ctx context.Context) ([]ListAllAvailableLibraryFilesRow, error) {
+	rows, err := q.db.QueryContext(ctx, listAllAvailableLibraryFiles)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListAllAvailableLibraryFilesRow
+	for rows.Next() {
+		var i ListAllAvailableLibraryFilesRow
+		if err := rows.Scan(&i.ItemID, &i.RelPath, &i.Size); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listAvailableLibraryItems = `-- name: ListAvailableLibraryItems :many
+SELECT li.id, li.display_title, li.release_name, li.folder, li.total_size, li.protocol, li.indexer, li.import_mode,
+       li.retention_days, li.imported_at, li.last_downloaded_at, li.download_count,
+       CAST(COALESCE(r.requester_id, 0) AS INTEGER) AS requester_id,
+       CAST(COALESCE(u.username, '') AS TEXT) AS requester,
+       CAST(COALESCE(r.comment, '') AS TEXT) AS comment,
+       CAST(COALESCE(a.username, '') AS TEXT) AS approver
+FROM library_items li
+LEFT JOIN requests r ON r.id = li.request_id
+LEFT JOIN users u ON u.id = r.requester_id
+LEFT JOIN users a ON a.id = r.approved_by
+WHERE li.status = 'available'
+ORDER BY li.imported_at DESC, li.id DESC
+`
+
+type ListAvailableLibraryItemsRow struct {
+	ID               int64         `json:"id"`
+	DisplayTitle     string        `json:"display_title"`
+	ReleaseName      string        `json:"release_name"`
+	Folder           string        `json:"folder"`
+	TotalSize        int64         `json:"total_size"`
+	Protocol         string        `json:"protocol"`
+	Indexer          string        `json:"indexer"`
+	ImportMode       string        `json:"import_mode"`
+	RetentionDays    sql.NullInt64 `json:"retention_days"`
+	ImportedAt       int64         `json:"imported_at"`
+	LastDownloadedAt sql.NullInt64 `json:"last_downloaded_at"`
+	DownloadCount    int64         `json:"download_count"`
+	RequesterID      int64         `json:"requester_id"`
+	Requester        string        `json:"requester"`
+	Comment          string        `json:"comment"`
+	Approver         string        `json:"approver"`
+}
+
+func (q *Queries) ListAvailableLibraryItems(ctx context.Context) ([]ListAvailableLibraryItemsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listAvailableLibraryItems)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListAvailableLibraryItemsRow
+	for rows.Next() {
+		var i ListAvailableLibraryItemsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.DisplayTitle,
+			&i.ReleaseName,
+			&i.Folder,
+			&i.TotalSize,
+			&i.Protocol,
+			&i.Indexer,
+			&i.ImportMode,
+			&i.RetentionDays,
+			&i.ImportedAt,
+			&i.LastDownloadedAt,
+			&i.DownloadCount,
+			&i.RequesterID,
+			&i.Requester,
+			&i.Comment,
+			&i.Approver,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listLibraryFiles = `-- name: ListLibraryFiles :many
+SELECT item_id, rel_path, size FROM library_files WHERE item_id = ? ORDER BY id
+`
+
+type ListLibraryFilesRow struct {
+	ItemID  int64  `json:"item_id"`
+	RelPath string `json:"rel_path"`
+	Size    int64  `json:"size"`
+}
+
+func (q *Queries) ListLibraryFiles(ctx context.Context, itemID int64) ([]ListLibraryFilesRow, error) {
+	rows, err := q.db.QueryContext(ctx, listLibraryFiles, itemID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListLibraryFilesRow
+	for rows.Next() {
+		var i ListLibraryFilesRow
+		if err := rows.Scan(&i.ItemID, &i.RelPath, &i.Size); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const recordLibraryDownload = `-- name: RecordLibraryDownload :exec
+UPDATE library_items SET download_count = download_count + 1, last_downloaded_at = ? WHERE id = ?
+`
+
+type RecordLibraryDownloadParams struct {
+	LastDownloadedAt sql.NullInt64 `json:"last_downloaded_at"`
+	ID               int64         `json:"id"`
+}
+
+func (q *Queries) RecordLibraryDownload(ctx context.Context, arg RecordLibraryDownloadParams) error {
+	_, err := q.db.ExecContext(ctx, recordLibraryDownload, arg.LastDownloadedAt, arg.ID)
+	return err
+}
+
+const setLibraryItemStatus = `-- name: SetLibraryItemStatus :execrows
+UPDATE library_items SET status = ? WHERE id = ? AND status = 'available'
+`
+
+type SetLibraryItemStatusParams struct {
+	Status string `json:"status"`
+	ID     int64  `json:"id"`
+}
+
+func (q *Queries) SetLibraryItemStatus(ctx context.Context, arg SetLibraryItemStatusParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, setLibraryItemStatus, arg.Status, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const updateLibraryItemMeta = `-- name: UpdateLibraryItemMeta :exec
+UPDATE library_items SET display_title = ?, retention_days = ? WHERE id = ?
+`
+
+type UpdateLibraryItemMetaParams struct {
+	DisplayTitle  string        `json:"display_title"`
+	RetentionDays sql.NullInt64 `json:"retention_days"`
+	ID            int64         `json:"id"`
+}
+
+func (q *Queries) UpdateLibraryItemMeta(ctx context.Context, arg UpdateLibraryItemMetaParams) error {
+	_, err := q.db.ExecContext(ctx, updateLibraryItemMeta, arg.DisplayTitle, arg.RetentionDays, arg.ID)
+	return err
 }
