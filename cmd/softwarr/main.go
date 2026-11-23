@@ -17,6 +17,7 @@ import (
 	"github.com/digitalbile/softwarr/internal/config"
 	"github.com/digitalbile/softwarr/internal/db"
 	"github.com/digitalbile/softwarr/internal/db/dbq"
+	"github.com/digitalbile/softwarr/internal/events"
 	"github.com/digitalbile/softwarr/internal/httpapi"
 	"github.com/digitalbile/softwarr/internal/settings"
 )
@@ -97,6 +98,7 @@ func run() error {
 		Users:    auth.NewUsers(database, q),
 		Sessions: auth.NewSessions(q, time.Now),
 		OIDC:     auth.NewOIDC(st, q, database, time.Now),
+		Broker:   events.NewBroker(),
 		URLBase:  cfg.URLBase,
 		Version:  version,
 		Now:      time.Now,
