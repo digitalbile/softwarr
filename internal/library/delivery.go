@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"mime"
 	"net/http"
 	"os"
@@ -21,6 +22,9 @@ var ErrFilesMissing = errors.New("Files for this item are missing on disk.")
 
 // ErrAborted means the response had started when the download failed, so the
 // caller can no longer send an error body.
+// testHookAfterStat runs after files are stat-ed; tests use it to race removals.
+var testHookAfterStat func()
+
 var ErrAborted = errors.New("library: download aborted")
 
 var archiveExts = map[string]bool{
@@ -46,7 +50,9 @@ func (s *Service) Download(w http.ResponseWriter, r *http.Request, it Item) erro
 		ctx := context.WithoutCancel(r.Context())
 		if err := s.q.RecordLibraryDownload(ctx, dbq.RecordLibraryDownloadParams{
 			LastDownloadedAt: nullTime(s.now().Unix()), ID: it.ID,
-		}); err == nil {
+		}); err != nil {
+			slog.Error("library: record download", "id", it.ID, "err", err)
+		} else {
 			s.publish(it.ID)
 		}
 	})
@@ -75,11 +81,15 @@ func serve(w http.ResponseWriter, r *http.Request, folder string, it Item, onSta
 		if !within(folder, p) {
 			return fmt.Errorf("%w: %q", ErrUnsafePath, f.Path)
 		}
-		fi, err := os.Stat(p)
+		// Lstat: a symlink in the folder is never followed.
+		fi, err := os.Lstat(p)
 		if err != nil || !fi.Mode().IsRegular() {
 			return ErrFilesMissing
 		}
 		files = append(files, resolved{rel: f.Path, path: p, info: fi})
+	}
+	if testHookAfterStat != nil {
+		testHookAfterStat()
 	}
 	head := r.Method == http.MethodHead
 
@@ -99,6 +109,16 @@ func serve(w http.ResponseWriter, r *http.Request, folder string, it Item, onSta
 		return nil
 	}
 
+	// Open the first file before anything is written, so a file that vanished
+	// since the stat still gets a clean error response.
+	var first *os.File
+	if !head {
+		var err error
+		if first, err = os.Open(files[0].path); err != nil {
+			return ErrFilesMissing
+		}
+		defer first.Close()
+	}
 	w.Header().Set("Content-Type", "application/zip")
 	w.Header().Set("Content-Disposition", attachment(importer.SanitizeName(it.Title)+".zip"))
 	if head {
@@ -109,8 +129,19 @@ func serve(w http.ResponseWriter, r *http.Request, folder string, it Item, onSta
 	}
 	ctx := r.Context()
 	zw := zip.NewWriter(w)
-	for _, f := range files {
-		if err := addToZip(ctx, zw, f); err != nil {
+	for i, f := range files {
+		src := first
+		if i > 0 {
+			var err error
+			if src, err = os.Open(f.path); err != nil {
+				return fmt.Errorf("%w: %w", ErrAborted, err)
+			}
+		}
+		err := addToZip(ctx, zw, f, src)
+		if i > 0 {
+			src.Close()
+		}
+		if err != nil {
 			return fmt.Errorf("%w: %w", ErrAborted, err)
 		}
 	}
@@ -120,12 +151,7 @@ func serve(w http.ResponseWriter, r *http.Request, folder string, it Item, onSta
 	return nil
 }
 
-func addToZip(ctx context.Context, zw *zip.Writer, f resolved) error {
-	src, err := os.Open(f.path)
-	if err != nil {
-		return err
-	}
-	defer src.Close()
+func addToZip(ctx context.Context, zw *zip.Writer, f resolved, src io.Reader) error {
 	hdr := &zip.FileHeader{
 		Name:               path.Clean(filepath.ToSlash(f.rel)),
 		Method:             zip.Store,

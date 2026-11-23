@@ -237,6 +237,16 @@ func folderInRoot(root, folder string) error {
 	if !within(root, folder) {
 		return fmt.Errorf("%w: %q", ErrUnsafePath, folder)
 	}
+	// The importer always creates root/<name>, so the folder must be a direct
+	// child of the root, and must not be a symlink that leads elsewhere.
+	absRoot, err1 := filepath.Abs(root)
+	absFolder, err2 := filepath.Abs(folder)
+	if err1 != nil || err2 != nil || filepath.Dir(absFolder) != absRoot {
+		return fmt.Errorf("%w: %q", ErrUnsafePath, folder)
+	}
+	if fi, err := os.Lstat(absFolder); err == nil && fi.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("%w: %q is a symlink", ErrUnsafePath, folder)
+	}
 	return nil
 }
 

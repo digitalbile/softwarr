@@ -251,3 +251,24 @@ func TestListFilter(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, all, 2)
 }
+
+func TestDeleteRefusesSymlinkedAndNestedFolders(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	downloads := t.TempDir()
+	victim := filepath.Join(downloads, "keep.bin")
+	require.NoError(t, os.WriteFile(victim, []byte("x"), 0o644))
+	id := e.addItem(t, "Item", map[string]string{"a.txt": "a"})
+
+	// The folder itself is a symlink to a download client directory.
+	link := filepath.Join(e.root, "link")
+	require.NoError(t, os.Symlink(downloads, link))
+	// A symlinked directory between the root and the folder.
+	require.NoError(t, os.Symlink(downloads, filepath.Join(e.root, "hop")))
+	for _, folder := range []string{link, filepath.Join(e.root, "hop", "sub"), filepath.Join(e.root, "a", "b")} {
+		_, err := e.db.Exec("UPDATE library_items SET folder = ? WHERE id = ?", folder, id)
+		require.NoError(t, err)
+		require.ErrorIs(t, e.svc.Delete(ctx, id), ErrUnsafePath, folder)
+	}
+	assert.FileExists(t, victim)
+}
