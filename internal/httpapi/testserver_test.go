@@ -16,6 +16,7 @@ import (
 	"github.com/digitalbile/softwarr/internal/db/dbq"
 	"github.com/digitalbile/softwarr/internal/events"
 	"github.com/digitalbile/softwarr/internal/notify"
+	"github.com/digitalbile/softwarr/internal/requests"
 	"github.com/digitalbile/softwarr/internal/settings"
 	"github.com/digitalbile/softwarr/internal/testutil"
 	"github.com/stretchr/testify/require"
@@ -88,6 +89,7 @@ func newTestServerWith(t *testing.T, urlBase string, mutate func(*Deps)) *testSe
 		Now:          clock.Now,
 	}
 	deps.Notify = notify.New(q, deps.Broker, st, http.DefaultClient, clock.Now)
+	deps.Requests = requests.NewService(d, q, st, deps.Notify, deps.Broker, clock.Now)
 	if mutate != nil {
 		mutate(&deps)
 	}
