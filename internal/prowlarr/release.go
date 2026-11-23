@@ -38,10 +38,10 @@ func (r Release) Key() string {
 
 // Indexer is a configured Prowlarr indexer.
 type Indexer struct {
-	ID       int
-	Name     string
-	Protocol string
-	Enabled  bool
+	ID       int    `json:"id"`
+	Name     string `json:"name"`
+	Protocol string `json:"protocol"`
+	Enabled  bool   `json:"enabled"`
 }
 
 // wireRelease mirrors Prowlarr's JSON, where fields may be null or absent.

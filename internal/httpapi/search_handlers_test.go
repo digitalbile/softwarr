@@ -218,6 +218,12 @@ func TestIndexersAdminOnly(t *testing.T) {
 	got := decode[[]prowlarr.Indexer](t, resp)
 	require.Len(t, got, 1)
 	assert.Equal(t, "A", got[0].Name)
+
+	raw := decode[[]map[string]any](t, admin.do("GET", "/api/v1/indexers", nil))
+	require.Len(t, raw, 1)
+	for _, k := range []string{"id", "name", "protocol", "enabled"} {
+		assert.Contains(t, raw[0], k)
+	}
 }
 
 func TestProwlarrTestEndpoint(t *testing.T) {
