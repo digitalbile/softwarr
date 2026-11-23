@@ -100,11 +100,23 @@ func New(d Deps) http.Handler {
 		spa.ServeHTTP(w, r)
 	}))
 	if d.URLBase == "" {
-		return inner
+		return securityHeaders(inner)
 	}
 	root := http.NewServeMux()
 	root.Handle(d.URLBase+"/", http.StripPrefix(d.URLBase, inner))
-	return root
+	return securityHeaders(root)
+}
+
+// securityHeaders stops other sites framing softwarr and browsers sniffing
+// content types, for the UI and the API alike.
+func securityHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		h := w.Header()
+		h.Set("X-Frame-Options", "DENY")
+		h.Set("X-Content-Type-Options", "nosniff")
+		h.Set("Content-Security-Policy", "frame-ancestors 'none'")
+		next.ServeHTTP(w, r)
+	})
 }
 
 // apiHandler serves mux, but turns the mux's plain-text 404 for an unknown

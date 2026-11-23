@@ -103,3 +103,15 @@ func TestWrongMethodOnAPIRouteIs405(t *testing.T) {
 	assert.Equal(t, http.StatusMethodNotAllowed, resp.StatusCode)
 	assert.Contains(t, resp.Header.Get("Allow"), "GET")
 }
+
+func TestSecurityHeaders(t *testing.T) {
+	for _, base := range []string{"", "/softwarr"} {
+		ts := uiServer(t, base, testUI())
+		for _, path := range []string{"/", "/library/5", "/api/v1/ping", "/api/v1/nope"} {
+			resp := ts.do("GET", base+path, nil)
+			assert.Equal(t, "DENY", resp.Header.Get("X-Frame-Options"), base+path)
+			assert.Equal(t, "nosniff", resp.Header.Get("X-Content-Type-Options"), base+path)
+			assert.Equal(t, "frame-ancestors 'none'", resp.Header.Get("Content-Security-Policy"), base+path)
+		}
+	}
+}
