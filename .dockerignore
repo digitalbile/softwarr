@@ -1,0 +1,7 @@
+.git
+.superpowers
+docs
+**/node_modules
+web/dist
+softwarr
+*.tsbuildinfo
