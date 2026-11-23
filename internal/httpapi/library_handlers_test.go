@@ -157,6 +157,17 @@ func TestLibraryAdminOnlyMutations(t *testing.T) {
 	assert.Equal(t, 404, oc.do("DELETE", "/api/v1/library/"+itoa(id), nil).StatusCode)
 }
 
+func TestDeleteWithMissingFolderConflicts(t *testing.T) {
+	ts := newTestServer(t)
+	ts.loginAsOwner()
+	id, folder := addLibraryItem(t, ts, t.TempDir(), "Item", 0, map[string]string{"a.txt": "a"})
+	require.NoError(t, os.RemoveAll(folder))
+	resp := ts.do("DELETE", "/api/v1/library/"+itoa(id), nil)
+	assert.Equal(t, http.StatusConflict, resp.StatusCode)
+	assert.Equal(t, "The library folder for this item is missing. Check that the library path is mounted.", errorBody(t, resp))
+	assert.Equal(t, http.StatusOK, ts.do("GET", "/api/v1/library/"+itoa(id), nil).StatusCode)
+}
+
 func TestDownloadMissingFileReturnsGone(t *testing.T) {
 	ts := newTestServer(t)
 	ts.loginAsOwner()
