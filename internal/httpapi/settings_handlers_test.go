@@ -1,0 +1,59 @@
+package httpapi
+
+import (
+	"net/http"
+	"testing"
+
+	"github.com/digitalbile/softwarr/internal/settings"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+func TestGetAndPutSettings(t *testing.T) {
+	ts := newTestServer(t)
+	ts.loginAsOwner()
+	resp := ts.do("GET", "/api/v1/settings", nil)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	st := decode[settings.Settings](t, resp)
+	assert.Len(t, st.APIKey, 32)
+
+	st.CommentRequired = true
+	st.LibraryRoot = "/library"
+	resp = ts.do("PUT", "/api/v1/settings", st)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	saved := decode[settings.Settings](t, resp)
+	assert.True(t, saved.CommentRequired)
+
+	got, err := ts.Deps.Settings.Get(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, "/library", got.LibraryRoot)
+	assert.Equal(t, st.APIKey, got.APIKey)
+}
+
+func TestPutSettingsValidation(t *testing.T) {
+	ts := newTestServer(t)
+	ts.loginAsOwner()
+	st := decode[settings.Settings](t, ts.do("GET", "/api/v1/settings", nil))
+	st.OIDC.Enabled = true
+	resp := ts.do("PUT", "/api/v1/settings", st)
+	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+	assert.Equal(t, "Set the external URL before enabling OIDC.", errorBody(t, resp))
+}
+
+func TestRegenerateAPIKey(t *testing.T) {
+	ts := newTestServer(t)
+	ts.loginAsOwner()
+	old := decode[settings.Settings](t, ts.do("GET", "/api/v1/settings", nil)).APIKey
+
+	resp := ts.do("POST", "/api/v1/settings/apikey", nil)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	fresh := decode[map[string]string](t, resp)["apiKey"]
+	assert.Regexp(t, `^[0-9a-f]{32}$`, fresh)
+	assert.NotEqual(t, old, fresh)
+
+	anon := ts.newClient()
+	resp = anon.request("GET", "/api/v1/settings", nil, map[string]string{"X-Api-Key": old})
+	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+	resp = anon.request("GET", "/api/v1/settings", nil, map[string]string{"X-Api-Key": fresh})
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+}

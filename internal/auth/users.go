@@ -18,6 +18,7 @@ var (
 	ErrInvalidCredentials = errors.New("Wrong username or password.")
 	ErrAccountInactive    = errors.New("This account isn't active. Ask an admin for help.")
 	ErrNotFound           = errors.New("That user doesn't exist.")
+	ErrHasRequests        = errors.New("This user has requests. Disable the account instead.")
 
 	errUsernameRequired = errors.New("A username is required.")
 	errUsernameTooLong  = errors.New("Usernames can be at most 64 characters.")
@@ -46,9 +47,10 @@ type User struct {
 }
 
 type UserPatch struct {
-	IsAdmin, AutoApprove *bool
-	Status               *string
-	Email                *string
+	IsAdmin     *bool   `json:"isAdmin"`
+	AutoApprove *bool   `json:"autoApprove"`
+	Status      *string `json:"status"`
+	Email       *string `json:"email"`
 }
 
 type Users struct {
@@ -320,6 +322,9 @@ func (u *Users) Delete(ctx context.Context, id int64) error {
 		return ErrOwnerProtected
 	}
 	if err := q.DeleteUser(ctx, id); err != nil {
+		if strings.Contains(err.Error(), "FOREIGN KEY constraint failed") {
+			return ErrHasRequests
+		}
 		return err
 	}
 	return tx.Commit()
