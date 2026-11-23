@@ -21,6 +21,7 @@ import (
 	"github.com/digitalbile/softwarr/internal/events"
 	"github.com/digitalbile/softwarr/internal/httpapi"
 	"github.com/digitalbile/softwarr/internal/notify"
+	"github.com/digitalbile/softwarr/internal/requests"
 	"github.com/digitalbile/softwarr/internal/settings"
 )
 
@@ -105,6 +106,7 @@ func run() error {
 		OIDC:     auth.NewOIDC(st, q, database, time.Now),
 		Broker:   broker,
 		Notify:   notifier,
+		Requests: requests.NewService(database, q, st, notifier, broker, time.Now),
 		Done:     sseDone,
 		URLBase:  cfg.URLBase,
 		Version:  version,
