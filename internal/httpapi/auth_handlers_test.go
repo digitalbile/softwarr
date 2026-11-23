@@ -90,6 +90,31 @@ func TestMutationWithoutCSRFHeader403(t *testing.T) {
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 }
 
+func TestLoginAndSetupNeedCSRFHeader(t *testing.T) {
+	ts := newTestServer(t)
+	// A cross-site form can post text/plain but can't add a custom header.
+	form := map[string]string{"Content-Type": "text/plain"}
+	resp := ts.request("POST", "/api/v1/setup", map[string]string{"username": "evil", "password": testPassword}, form)
+	assert.Equal(t, http.StatusForbidden, resp.StatusCode)
+	assert.Equal(t, "Missing CSRF header.", errorBody(t, resp))
+	var n int
+	require.NoError(t, ts.DB.QueryRow("SELECT COUNT(*) FROM users").Scan(&n))
+	assert.Zero(t, n)
+
+	ts.loginAsOwner()
+	c := ts.newClient()
+	resp = c.request("POST", "/api/v1/auth/login", map[string]string{"username": "owner", "password": testPassword}, form)
+	assert.Equal(t, http.StatusForbidden, resp.StatusCode)
+	assert.Equal(t, "Missing CSRF header.", errorBody(t, resp))
+	assert.Empty(t, resp.Cookies(), "no session for a forged login")
+
+	// A wrong API key doesn't excuse the header either.
+	resp = c.request("POST", "/api/v1/auth/login", map[string]string{"username": "owner", "password": testPassword}, map[string]string{"X-Api-Key": "wrong"})
+	assert.Equal(t, http.StatusForbidden, resp.StatusCode)
+
+	c.login("owner", testPassword)
+}
+
 func TestAPIKeyActsAsAdmin(t *testing.T) {
 	ts := newTestServer(t)
 	ts.loginAsOwner()

@@ -91,7 +91,8 @@ func (s *server) authenticate(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 
-		if key := r.Header.Get(apiKeyHeader); key != "" {
+		key := r.Header.Get(apiKeyHeader)
+		if key != "" {
 			st, err := s.Settings.Get(ctx)
 			if err != nil {
 				slog.Error("load settings", "err", err)
@@ -111,7 +112,17 @@ func (s *server) authenticate(next http.Handler) http.Handler {
 					return
 				}
 			}
-			next.ServeHTTP(w, r)
+		}
+
+		// Anything not authenticated by the API key needs the CSRF header to
+		// change state, signed in or not. Otherwise a cross-site form could
+		// sign a victim in to the attacker's account through login or setup.
+		if !isSafeMethod(r.Method) && r.Header.Get(csrfHeader) != "1" {
+			writeError(w, http.StatusForbidden, "Missing CSRF header.")
+			return
+		}
+		if key != "" {
+			next.ServeHTTP(w, r) // a wrong key: carry on unauthenticated
 			return
 		}
 
@@ -137,10 +148,6 @@ func (s *server) authenticate(next http.Handler) http.Handler {
 		if err != nil || user.Status != "active" {
 			_ = s.Sessions.Delete(ctx, c.Value)
 			next.ServeHTTP(w, r)
-			return
-		}
-		if !isSafeMethod(r.Method) && r.Header.Get(csrfHeader) != "1" {
-			writeError(w, http.StatusForbidden, "Missing CSRF header.")
 			return
 		}
 		if user.MustChangePassword && !mustChangeExempt(r) {
