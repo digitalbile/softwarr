@@ -27,6 +27,21 @@ func serverError(w http.ResponseWriter, err error) {
 	writeError(w, http.StatusInternalServerError, "Something went wrong.")
 }
 
+// sessionUser is the user payload for login and /auth/me. commentRequired
+// rides along because GET /settings is admin-only and the request dialog needs it.
+type sessionUser struct {
+	auth.User
+	CommentRequired bool `json:"commentRequired"`
+}
+
+func (s *server) sessionUser(r *http.Request, u auth.User) (sessionUser, error) {
+	st, err := s.Settings.Get(r.Context())
+	if err != nil {
+		return sessionUser{}, err
+	}
+	return sessionUser{User: u, CommentRequired: st.CommentRequired}, nil
+}
+
 func (s *server) startSession(w http.ResponseWriter, r *http.Request, userID int64) error {
 	token, expires, err := s.Sessions.Create(r.Context(), userID)
 	if err != nil {
@@ -92,7 +107,12 @@ func (s *server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		serverError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, user)
+	out, err := s.sessionUser(r, user)
+	if err != nil {
+		serverError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 func (s *server) handleLogout(w http.ResponseWriter, r *http.Request) {
@@ -113,7 +133,12 @@ func (s *server) handleMe(w http.ResponseWriter, r *http.Request) {
 		serverError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, user)
+	out, err := s.sessionUser(r, user)
+	if err != nil {
+		serverError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 func (s *server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
