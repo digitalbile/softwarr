@@ -5,6 +5,7 @@ go 1.27.3
 require (
 	github.com/pressly/goose/v3 v3.30.1
 	github.com/stretchr/testify v1.12.1
+	golang.org/x/crypto v0.59.0
 	modernc.org/sqlite v1.63.0
 )
 
