@@ -15,6 +15,7 @@ import (
 	"github.com/digitalbile/softwarr/internal/auth"
 	"github.com/digitalbile/softwarr/internal/db/dbq"
 	"github.com/digitalbile/softwarr/internal/events"
+	"github.com/digitalbile/softwarr/internal/notify"
 	"github.com/digitalbile/softwarr/internal/settings"
 	"github.com/digitalbile/softwarr/internal/testutil"
 	"github.com/stretchr/testify/require"
@@ -81,6 +82,7 @@ func newTestServerBase(t *testing.T, urlBase string) *testServer {
 		Version:      "test",
 		Now:          clock.Now,
 	}
+	deps.Notify = notify.New(q, deps.Broker, st, http.DefaultClient, clock.Now)
 	srv := httptest.NewServer(New(deps))
 	t.Cleanup(srv.Close)
 	ts := &testServer{t: t, srv: srv, DB: d, Q: q, Deps: deps, Clock: clock, shutdown: shutdown}
