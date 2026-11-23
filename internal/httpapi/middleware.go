@@ -2,8 +2,10 @@ package httpapi
 
 import (
 	"crypto/subtle"
+	"errors"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/digitalbile/softwarr/internal/auth"
@@ -30,7 +32,24 @@ func recoverer(next http.Handler) http.Handler {
 	})
 }
 
+// dropSessionCookie removes any session Set-Cookie already queued on w, so a
+// response never carries two conflicting ones.
+func dropSessionCookie(w http.ResponseWriter) {
+	h := w.Header()
+	var keep []string
+	for _, v := range h.Values("Set-Cookie") {
+		if !strings.HasPrefix(v, sessionCookie+"=") {
+			keep = append(keep, v)
+		}
+	}
+	h.Del("Set-Cookie")
+	for _, v := range keep {
+		h.Add("Set-Cookie", v)
+	}
+}
+
 func (s *server) setSessionCookie(w http.ResponseWriter, r *http.Request, token string, expires time.Time) {
+	dropSessionCookie(w)
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookie,
 		Value:    token,
@@ -43,6 +62,7 @@ func (s *server) setSessionCookie(w http.ResponseWriter, r *http.Request, token 
 }
 
 func (s *server) clearSessionCookie(w http.ResponseWriter, r *http.Request) {
+	dropSessionCookie(w)
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookie,
 		Path:     s.URLBase + "/",
@@ -86,6 +106,10 @@ func (s *server) authenticate(next http.Handler) http.Handler {
 					})))
 					return
 				}
+				if !errors.Is(err, auth.ErrNotFound) {
+					serverError(w, err)
+					return
+				}
 			}
 			next.ServeHTTP(w, r)
 			return
@@ -96,12 +120,20 @@ func (s *server) authenticate(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
-		userID, err := s.Sessions.Lookup(ctx, c.Value)
-		if err != nil {
+		userID, expires, extended, err := s.Sessions.Lookup(ctx, c.Value)
+		if errors.Is(err, auth.ErrNoSession) {
 			next.ServeHTTP(w, r)
 			return
 		}
+		if err != nil {
+			serverError(w, err)
+			return
+		}
 		user, err := s.Users.Get(ctx, userID)
+		if err != nil && !errors.Is(err, auth.ErrNotFound) {
+			serverError(w, err)
+			return
+		}
 		if err != nil || user.Status != "active" {
 			_ = s.Sessions.Delete(ctx, c.Value)
 			next.ServeHTTP(w, r)
@@ -116,7 +148,9 @@ func (s *server) authenticate(next http.Handler) http.Handler {
 			return
 		}
 		// Keep the browser cookie in step with the sliding server expiry.
-		s.setSessionCookie(w, r, c.Value, s.Now().Add(30*24*time.Hour))
+		if extended {
+			s.setSessionCookie(w, r, c.Value, expires)
+		}
 		next.ServeHTTP(w, r.WithContext(auth.WithPrincipal(ctx, auth.Principal{
 			UserID: user.ID, Username: user.Username, IsOwner: user.IsOwner, IsAdmin: user.IsAdmin,
 			AutoApprove: user.AutoApprove, MustChangePassword: user.MustChangePassword,
