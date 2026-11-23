@@ -142,7 +142,7 @@ func run() error {
 		Version:   version,
 		Now:       time.Now,
 	})
-	srv := &http.Server{Addr: fmt.Sprintf(":%d", cfg.Port), Handler: handler}
+	srv := newHTTPServer(cfg.Port, handler)
 
 	// Wait for Shutdown to finish draining before returning.
 	drained := make(chan struct{})
@@ -168,4 +168,15 @@ func run() error {
 	<-retentionDone
 	<-workerDone // let an in-flight tick finish before the database closes
 	return nil
+}
+
+// newHTTPServer builds the server for handler. ReadHeaderTimeout stops a
+// client that sends headers slowly from holding a connection open. There is
+// no write timeout: SSE streams and library downloads run for a long time.
+func newHTTPServer(port int, handler http.Handler) *http.Server {
+	return &http.Server{
+		Addr:              fmt.Sprintf(":%d", port),
+		Handler:           handler,
+		ReadHeaderTimeout: 10 * time.Second,
+	}
 }

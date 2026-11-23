@@ -3,8 +3,10 @@ package main
 import (
 	"bytes"
 	"context"
+	"net/http"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/digitalbile/softwarr/internal/auth"
 	"github.com/digitalbile/softwarr/internal/config"
@@ -27,4 +29,10 @@ func TestResetPasswordCmd(t *testing.T) {
 	var out bytes.Buffer
 	require.NoError(t, resetPasswordCmd(ctx, config.Config{DataDir: dir}, &out))
 	assert.Regexp(t, `^The owner password has been reset\.\nUsername: alice\nTemporary password: [A-Za-z0-9]{20}\nYou'll be asked to choose a new password after signing in\.\n$`, out.String())
+}
+
+func TestHTTPServerLimitsHeaderTime(t *testing.T) {
+	srv := newHTTPServer(7979, http.NotFoundHandler())
+	assert.Equal(t, ":7979", srv.Addr)
+	assert.Equal(t, 10*time.Second, srv.ReadHeaderTimeout, "slow clients can't hold connections open forever")
 }
