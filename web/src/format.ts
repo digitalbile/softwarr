@@ -19,3 +19,19 @@ export function formatAge(iso: string, now: number = Date.now()): string {
   if (mins >= 60) return `${Math.floor(mins / 60)}h`
   return `${mins}m`
 }
+
+// Newznab standard PC categories. Anything else shows as its id.
+const categoryNames: Record<number, string> = {
+  4000: 'PC',
+  4010: 'PC/0day',
+  4020: 'PC/ISO',
+  4030: 'PC/Mac',
+  4040: 'PC/Mobile-Other',
+  4050: 'PC/Games',
+  4060: 'PC/Mobile-iOS',
+  4070: 'PC/Mobile-Android',
+}
+
+export function formatCategories(ids: number[]): string {
+  return ids.map((id) => categoryNames[id] ?? String(id)).join(', ')
+}

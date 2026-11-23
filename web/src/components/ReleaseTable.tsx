@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { Link } from 'react-router'
 import { Button, Table, Text, UnstyledButton } from '@mantine/core'
 import type { SearchResult } from '../api/types'
-import { formatAge, formatBytes } from '../format'
+import { formatAge, formatBytes, formatCategories } from '../format'
 import { StatusBadge } from './StatusBadge'
 
 type SortKey = 'title' | 'size' | 'age' | 'peers'
@@ -58,13 +58,14 @@ export function ReleaseTable({ results, onSelect, selectable = (r) => r.status =
   if (results.length === 0) return <Text c="dimmed">No results.</Text>
 
   return (
-    <Table.ScrollContainer minWidth={760}>
+    <Table.ScrollContainer minWidth={860}>
       <Table highlightOnHover verticalSpacing={4} fz="sm">
         <Table.Thead>
           <Table.Tr>
             <Header label="Title" k="title" sort={sort} onSort={onSort} />
             <Table.Th>Indexer</Table.Th>
             <Table.Th>Protocol</Table.Th>
+            <Table.Th>Category</Table.Th>
             <Header label="Size" k="size" sort={sort} onSort={onSort} />
             <Header label="Age" k="age" sort={sort} onSort={onSort} />
             <Header label="Seeders / leechers" k="peers" sort={sort} onSort={onSort} />
@@ -73,10 +74,12 @@ export function ReleaseTable({ results, onSelect, selectable = (r) => r.status =
         </Table.Thead>
         <Table.Tbody>
           {rows.map((r) => (
-            <Table.Tr key={r.key}>
+            // The same release can come from more than one indexer.
+            <Table.Tr key={`${r.key}|${r.indexerId}|${r.guid}`}>
               <Table.Td>{r.title}</Table.Td>
               <Table.Td>{r.indexer}</Table.Td>
               <Table.Td>{r.protocol}</Table.Td>
+              <Table.Td>{formatCategories(r.categories)}</Table.Td>
               <Table.Td>{formatBytes(r.size)}</Table.Td>
               <Table.Td>{formatAge(r.publishDate)}</Table.Td>
               <Table.Td>{peers(r)}</Table.Td>
