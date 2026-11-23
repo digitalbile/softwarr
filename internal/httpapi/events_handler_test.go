@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"bufio"
+	"io"
 	"net/http"
 	"strings"
 	"testing"
@@ -33,7 +34,7 @@ func TestSSEEndpointStreams(t *testing.T) {
 	sc := bufio.NewScanner(resp.Body)
 	var lines []string
 	for len(lines) < 2 && sc.Scan() {
-		if strings.HasPrefix(sc.Text(), ":") {
+		if sc.Text() == "" || strings.HasPrefix(sc.Text(), ":") {
 			continue
 		}
 		lines = append(lines, sc.Text())
@@ -64,4 +65,23 @@ func TestSSEEndpointSendsPingAndUnsubscribes(t *testing.T) {
 	}
 	resp.Body.Close()
 	require.Eventually(t, func() bool { return ts.Deps.Broker.SubscriberCount() == 0 }, 3*time.Second, 10*time.Millisecond)
+}
+
+func TestSSEEndpointStopsOnShutdown(t *testing.T) {
+	ts := newTestServer(t)
+	ts.loginAsUser()
+	resp := ts.do("GET", "/api/v1/events", nil)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	close(ts.shutdown)
+	done := make(chan struct{})
+	go func() {
+		_, _ = io.Copy(io.Discard, resp.Body) // returns at EOF once the handler exits
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("stream still open after shutdown signal")
+	}
 }

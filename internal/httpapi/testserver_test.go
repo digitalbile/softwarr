@@ -47,15 +47,16 @@ type client struct {
 }
 
 type testServer struct {
-	*client // the default client
-	t       *testing.T
-	srv     *httptest.Server
-	DB      *sql.DB
-	Q       *dbq.Queries
-	Deps    Deps
-	Clock   *fakeClock
-	owner   *auth.User
-	user    *auth.User
+	*client  // the default client
+	t        *testing.T
+	srv      *httptest.Server
+	DB       *sql.DB
+	Q        *dbq.Queries
+	Deps     Deps
+	Clock    *fakeClock
+	shutdown chan struct{}
+	owner    *auth.User
+	user     *auth.User
 }
 
 func newTestServer(t *testing.T) *testServer { return newTestServerBase(t, "") }
@@ -66,12 +67,14 @@ func newTestServerBase(t *testing.T, urlBase string) *testServer {
 	// Start at the real time: the cookie jar judges cookie expiry by the wall clock.
 	clock := &fakeClock{t: time.Now()}
 	st := settings.NewStore(q)
+	shutdown := make(chan struct{})
 	deps := Deps{
 		DB: d, Q: q,
 		Settings:     st,
 		Users:        auth.NewUsers(d, q),
 		Sessions:     auth.NewSessions(q, clock.Now),
 		OIDC:         auth.NewOIDC(st, q, d, clock.Now),
+		Done:         shutdown,
 		Broker:       events.NewBroker(),
 		PingInterval: 20 * time.Millisecond,
 		URLBase:      urlBase,
@@ -80,7 +83,7 @@ func newTestServerBase(t *testing.T, urlBase string) *testServer {
 	}
 	srv := httptest.NewServer(New(deps))
 	t.Cleanup(srv.Close)
-	ts := &testServer{t: t, srv: srv, DB: d, Q: q, Deps: deps, Clock: clock}
+	ts := &testServer{t: t, srv: srv, DB: d, Q: q, Deps: deps, Clock: clock, shutdown: shutdown}
 	ts.client = ts.newClient()
 	return ts
 }
