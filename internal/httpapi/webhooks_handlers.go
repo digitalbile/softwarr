@@ -50,7 +50,7 @@ func (s *server) handleCreateWebhook(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) handleUpdateWebhook(w http.ResponseWriter, r *http.Request) {
-	id, ok := userID(w, r)
+	id, ok := pathID(w, r, notify.ErrNotFound.Error())
 	if !ok {
 		return
 	}
@@ -68,7 +68,7 @@ func (s *server) handleUpdateWebhook(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) handleDeleteWebhook(w http.ResponseWriter, r *http.Request) {
-	id, ok := userID(w, r)
+	id, ok := pathID(w, r, notify.ErrNotFound.Error())
 	if !ok {
 		return
 	}
@@ -80,7 +80,7 @@ func (s *server) handleDeleteWebhook(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) handleTestWebhook(w http.ResponseWriter, r *http.Request) {
-	id, ok := userID(w, r)
+	id, ok := pathID(w, r, notify.ErrNotFound.Error())
 	if !ok {
 		return
 	}

@@ -139,24 +139,28 @@ func TestWebhookOnlySubscribedEvents(t *testing.T) {
 		mu.Unlock()
 	}))
 	defer srv.Close()
-	addHook(t, e, srv.URL, "", []string{EvItemAvailable})
+	addHook(t, e, srv.URL, "", []string{EvItemAvailable, EvRequestFailed})
 	cur, err := e.st.Get(context.Background())
 	require.NoError(t, err)
 	cur.ExternalURL = "https://sw.example"
 	require.NoError(t, e.st.Save(context.Background(), cur))
 
 	e.svc.Emit(context.Background(), Event{Type: EvRequestDenied, Message: "no", RequestID: 1})
-	e.svc.Emit(context.Background(), Event{Type: EvItemAvailable, Message: "yes", ItemID: 4, Payload: map[string]any{"name": "Foo"}})
+	e.svc.Emit(context.Background(), Event{Type: EvItemAvailable, Message: "yes", RequestID: 9, ItemID: 4, Payload: map[string]any{"name": "Foo"}})
+	e.svc.wait()
+	e.svc.Emit(context.Background(), Event{Type: EvRequestFailed, Message: "boom", RequestID: 9})
 	e.svc.wait()
 
 	mu.Lock()
 	defer mu.Unlock()
-	require.Len(t, bodies, 1)
+	require.Len(t, bodies, 2)
+	// Links point at pages the web app has.
+	require.Equal(t, "https://sw.example/admin/requests", bodies[1]["url"])
 	b := bodies[0]
 	require.Equal(t, EvItemAvailable, b["event"])
 	require.Equal(t, "yes", b["message"])
 	require.Equal(t, fixedNow.Format(time.RFC3339), b["timestamp"])
-	require.Nil(t, b["requestId"])
+	require.EqualValues(t, 9, b["requestId"])
 	require.EqualValues(t, 4, b["itemId"])
 	require.Equal(t, "https://sw.example/library/4", b["url"])
 	require.Equal(t, "Foo", b["name"])
