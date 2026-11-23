@@ -10,6 +10,7 @@ import (
 	"github.com/digitalbile/softwarr/internal/db/dbq"
 	"github.com/digitalbile/softwarr/internal/events"
 	"github.com/digitalbile/softwarr/internal/notify"
+	"github.com/digitalbile/softwarr/internal/prowlarr"
 	"github.com/digitalbile/softwarr/internal/settings"
 )
 
@@ -22,6 +23,8 @@ type Deps struct {
 	OIDC     *auth.OIDC
 	Broker   *events.Broker
 	Notify   *notify.Service
+	// NewProwlarr builds a Prowlarr client; tests inject a short timeout.
+	NewProwlarr func(url, key string) *prowlarr.Client
 	// Done, when closed, ends open SSE streams so server shutdown can drain.
 	Done <-chan struct{}
 	// PingInterval is the SSE keepalive period; zero means 25s.
@@ -58,6 +61,7 @@ func New(d Deps) http.Handler {
 	s.registerEventRoutes(api)
 	s.registerNotificationRoutes(api)
 	s.registerWebhookRoutes(api)
+	s.registerSearchRoutes(api)
 
 	inner := recoverer(s.authenticate(api))
 	if d.URLBase == "" {
