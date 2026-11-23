@@ -37,6 +37,8 @@ func New(d Deps) http.Handler {
 		writeJSON(w, http.StatusOK, map[string]string{"version": s.Version})
 	})
 	s.registerAuthRoutes(api)
+	s.registerUserRoutes(api)
+	s.registerSettingsRoutes(api)
 
 	inner := recoverer(s.authenticate(api))
 	if d.URLBase == "" {

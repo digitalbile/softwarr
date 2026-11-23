@@ -96,3 +96,23 @@ func TestSaveRejectsNegativeRetention(t *testing.T) {
 	in.DefaultRetentionDays = -1
 	require.Error(t, s.Save(context.Background(), in))
 }
+
+func TestRegenerateAPIKey(t *testing.T) {
+	_, q := testutil.NewDB(t)
+	s := NewStore(q)
+	ctx := context.Background()
+	before, err := s.Get(ctx)
+	require.NoError(t, err)
+
+	key, err := s.RegenerateAPIKey(ctx)
+	require.NoError(t, err)
+	assert.Regexp(t, regexp.MustCompile(`^[0-9a-f]{32}$`), key)
+	assert.NotEqual(t, before.APIKey, key)
+
+	after, err := s.Get(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, key, after.APIKey)
+	reloaded, err := NewStore(q).Get(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, key, reloaded.APIKey)
+}

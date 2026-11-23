@@ -112,15 +112,28 @@ func (s *Store) Save(ctx context.Context, in Settings) error {
 	return nil
 }
 
+// inputError is a validation failure that is safe to show to the user.
+type inputError string
+
+func (e inputError) Error() string { return string(e) }
+
+func errInput(msg string) error { return inputError(msg) }
+
+// IsInputError reports whether err is a validation failure from Save.
+func IsInputError(err error) bool {
+	var ie inputError
+	return errors.As(err, &ie)
+}
+
 func validate(in Settings) error {
 	if in.OIDC.Enabled && in.ExternalURL == "" {
-		return errors.New("Set the external URL before enabling OIDC.")
+		return errInput("Set the external URL before enabling OIDC.")
 	}
 	if in.DefaultRetentionDays < 0 {
-		return errors.New("Retention days cannot be negative.")
+		return errInput("Retention days cannot be negative.")
 	}
 	if in.StallHours < 0 {
-		return errors.New("Stall hours cannot be negative.")
+		return errInput("Stall hours cannot be negative.")
 	}
 	return nil
 }
@@ -140,11 +153,11 @@ func (s *Store) load(ctx context.Context) error {
 		}
 	}
 	if cur.APIKey == "" {
-		b := make([]byte, 16)
-		if _, err := rand.Read(b); err != nil {
+		key, err := newAPIKey()
+		if err != nil {
 			return err
 		}
-		cur.APIKey = hex.EncodeToString(b)
+		cur.APIKey = key
 		if err := s.persist(ctx, cur); err != nil {
 			return err
 		}
@@ -159,4 +172,34 @@ func (s *Store) persist(ctx context.Context, v Settings) error {
 		return err
 	}
 	return s.q.UpsertSetting(ctx, dbq.UpsertSettingParams{Key: settingsKey, Value: string(b)})
+}
+
+// RegenerateAPIKey replaces the API key with a new random one and returns it.
+func (s *Store) RegenerateAPIKey(ctx context.Context) (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.cached == nil {
+		if err := s.load(ctx); err != nil {
+			return "", err
+		}
+	}
+	key, err := newAPIKey()
+	if err != nil {
+		return "", err
+	}
+	next := s.cached.clone()
+	next.APIKey = key
+	if err := s.persist(ctx, next); err != nil {
+		return "", err
+	}
+	s.cached = &next
+	return key, nil
+}
+
+func newAPIKey() (string, error) {
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(b), nil
 }
