@@ -1,0 +1,199 @@
+package importer
+
+import (
+	"context"
+	"os"
+	"path/filepath"
+	"strings"
+	"syscall"
+	"testing"
+	"time"
+	"unicode/utf8"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/digitalbile/softwarr/internal/downloadclient"
+)
+
+func TestSanitizeName(t *testing.T) {
+	cases := map[string]string{
+		"a/b:c":     "a_b_c",
+		"  .x.  ":   "x",
+		"":          "untitled",
+		"...":       "untitled",
+		"a\x00b\tc": "a_b_c",
+		`a\*?"<>|b`: "a_______b",
+		"Name 1.0":  "Name 1.0",
+	}
+	for in, want := range cases {
+		assert.Equal(t, want, SanitizeName(in), "input %q", in)
+	}
+	long := SanitizeName(strings.Repeat("é", 300))
+	assert.LessOrEqual(t, len(long), 200)
+	assert.True(t, utf8.ValidString(long))
+}
+
+func write(t *testing.T, path, content string) {
+	t.Helper()
+	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
+	require.NoError(t, os.WriteFile(path, []byte(content), 0o644))
+}
+
+func setup(t *testing.T, files map[string]string) (Source, string) {
+	t.Helper()
+	base := t.TempDir()
+	lib := t.TempDir()
+	var fs []downloadclient.File
+	for p, c := range files {
+		write(t, filepath.Join(base, filepath.FromSlash(p)), c)
+		fs = append(fs, downloadclient.File{Path: p, Size: int64(len(c))})
+	}
+	return Source{BaseDir: base, Files: fs, Protocol: "torrent"}, lib
+}
+
+func TestImportHardlinks(t *testing.T) {
+	src, lib := setup(t, map[string]string{"a.bin": "hello"})
+	res, err := Import(context.Background(), src, lib, "My App")
+	require.NoError(t, err)
+	assert.Equal(t, ModeHardlink, res.Mode)
+	assert.Equal(t, filepath.Join(lib, "My App"), res.Folder)
+	assert.Equal(t, int64(5), res.TotalSize)
+	require.Len(t, res.Files, 1)
+	assert.Equal(t, "a.bin", res.Files[0].Path)
+	s, _ := os.Stat(filepath.Join(src.BaseDir, "a.bin"))
+	d, err := os.Stat(filepath.Join(res.Folder, "a.bin"))
+	require.NoError(t, err)
+	assert.True(t, os.SameFile(s, d))
+}
+
+func TestImportStripsCommonRoot(t *testing.T) {
+	src, lib := setup(t, map[string]string{"Rel/a.bin": "1", "Rel/sub/b.bin": "22"})
+	res, err := Import(context.Background(), src, lib, "Rel")
+	require.NoError(t, err)
+	assert.FileExists(t, filepath.Join(res.Folder, "a.bin"))
+	assert.FileExists(t, filepath.Join(res.Folder, "sub", "b.bin"))
+	paths := []string{}
+	for _, f := range res.Files {
+		paths = append(paths, f.Path)
+	}
+	assert.ElementsMatch(t, []string{"a.bin", "sub/b.bin"}, paths)
+	assert.Equal(t, int64(3), res.TotalSize)
+}
+
+func TestImportFolderCollisionSuffix(t *testing.T) {
+	src, lib := setup(t, map[string]string{"a.bin": "x"})
+	r1, err := Import(context.Background(), src, lib, "App")
+	require.NoError(t, err)
+	r2, err := Import(context.Background(), src, lib, "App")
+	require.NoError(t, err)
+	r3, err := Import(context.Background(), src, lib, "App")
+	require.NoError(t, err)
+	assert.Equal(t, filepath.Join(lib, "App"), r1.Folder)
+	assert.Equal(t, filepath.Join(lib, "App (2)"), r2.Folder)
+	assert.Equal(t, filepath.Join(lib, "App (3)"), r3.Folder)
+}
+
+func TestImportMissingLibraryRoot(t *testing.T) {
+	src, lib := setup(t, map[string]string{"a.bin": "x"})
+	_, err := Import(context.Background(), src, filepath.Join(lib, "nope"), "App")
+	require.Error(t, err)
+}
+
+func TestImportFallsBackToCopyOnEXDEV(t *testing.T) {
+	orig := link
+	t.Cleanup(func() { link = orig })
+	link = func(o, n string) error { return &os.LinkError{Op: "link", Old: o, New: n, Err: syscall.EXDEV} }
+	src, lib := setup(t, map[string]string{"a.bin": "hello", "b.bin": "world"})
+	require.NoError(t, os.Chmod(filepath.Join(src.BaseDir, "a.bin"), 0o640))
+	res, err := Import(context.Background(), src, lib, "App")
+	require.NoError(t, err)
+	assert.Equal(t, ModeCopy, res.Mode)
+	for _, n := range []string{"a.bin", "b.bin"} {
+		sb, _ := os.ReadFile(filepath.Join(src.BaseDir, n))
+		db, err := os.ReadFile(filepath.Join(res.Folder, n))
+		require.NoError(t, err)
+		assert.Equal(t, sb, db)
+		s, _ := os.Stat(filepath.Join(src.BaseDir, n))
+		d, _ := os.Stat(filepath.Join(res.Folder, n))
+		assert.False(t, os.SameFile(s, d))
+	}
+	d, _ := os.Stat(filepath.Join(res.Folder, "a.bin"))
+	assert.Equal(t, os.FileMode(0o640), d.Mode().Perm())
+	ents, _ := os.ReadDir(res.Folder)
+	assert.Len(t, ents, 2, "no temp files left")
+}
+
+func TestImportOtherLinkErrorFailsAndCleansUp(t *testing.T) {
+	orig := link
+	t.Cleanup(func() { link = orig })
+	link = func(o, n string) error { return &os.LinkError{Op: "link", Old: o, New: n, Err: syscall.EPERM} }
+	src, lib := setup(t, map[string]string{"a.bin": "x"})
+	_, err := Import(context.Background(), src, lib, "App")
+	require.Error(t, err)
+	ents, _ := os.ReadDir(lib)
+	assert.Empty(t, ents)
+}
+
+func TestImportRejectsEscapingPaths(t *testing.T) {
+	for _, bad := range []string{"../../etc/x", "/abs", `C:\x`, `\\srv\x`, "a/../../b", "", "a\x00b", `..\x`} {
+		src, lib := setup(t, map[string]string{"ok.bin": "x"})
+		src.Files = append(src.Files, downloadclient.File{Path: bad})
+		_, err := Import(context.Background(), src, lib, "App")
+		require.ErrorIs(t, err, ErrUnsafePath, "path %q", bad)
+		ents, _ := os.ReadDir(lib)
+		assert.Empty(t, ents, "path %q", bad)
+	}
+}
+
+func TestImportRejectsSymlinkSource(t *testing.T) {
+	src, lib := setup(t, map[string]string{"ok.bin": "x"})
+	secret := filepath.Join(t.TempDir(), "secret")
+	write(t, secret, "s")
+	require.NoError(t, os.Symlink(secret, filepath.Join(src.BaseDir, "evil.bin")))
+	src.Files = append(src.Files, downloadclient.File{Path: "evil.bin"})
+	_, err := Import(context.Background(), src, lib, "App")
+	require.ErrorIs(t, err, ErrUnsafePath)
+	ents, _ := os.ReadDir(lib)
+	assert.Empty(t, ents)
+}
+
+func TestImportCanceledContext(t *testing.T) {
+	src, lib := setup(t, map[string]string{"a.bin": "x"})
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err := Import(ctx, src, lib, "App")
+	require.ErrorIs(t, err, context.Canceled)
+	ents, _ := os.ReadDir(lib)
+	assert.Empty(t, ents)
+}
+
+func TestImportSourceUntouched(t *testing.T) {
+	for _, exdev := range []bool{false, true} {
+		orig := link
+		if exdev {
+			link = func(o, n string) error { return &os.LinkError{Err: syscall.EXDEV} }
+		}
+		src, lib := setup(t, map[string]string{"a.bin": "hello"})
+		p := filepath.Join(src.BaseDir, "a.bin")
+		old := time.Now().Add(-48 * time.Hour).Truncate(time.Second)
+		require.NoError(t, os.Chtimes(p, old, old))
+		_, err := Import(context.Background(), src, lib, "App")
+		link = orig
+		require.NoError(t, err)
+		st, _ := os.Stat(p)
+		assert.True(t, st.ModTime().Equal(old))
+		b, _ := os.ReadFile(p)
+		assert.Equal(t, "hello", string(b))
+	}
+}
+
+func TestImportUsenetMoves(t *testing.T) {
+	src, lib := setup(t, map[string]string{"a.nzbout": "x"})
+	src.Protocol = "usenet"
+	res, err := Import(context.Background(), src, lib, "App")
+	require.NoError(t, err)
+	assert.Equal(t, ModeMove, res.Mode)
+	assert.NoFileExists(t, filepath.Join(src.BaseDir, "a.nzbout"))
+	assert.FileExists(t, filepath.Join(res.Folder, "a.nzbout"))
+}
