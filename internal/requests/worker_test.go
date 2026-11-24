@@ -347,6 +347,63 @@ func TestWorkerCompletesAndImports(t *testing.T) {
 	assert.NoError(t, err)
 }
 
+func TestWorkerImportRedoesAfterRecordFails(t *testing.T) {
+	we := newWorkerEnv(t)
+	req := we.downloading(t, "a")
+	dl := t.TempDir()
+	we.fc.setItem(completedItem(t, dl, dl))
+	require.NoError(t, we.w.Tick(context.Background()))
+	we.get(t, req.ID, Importing)
+
+	// The files land in the library but the item can't be recorded.
+	_, err := we.svc.db.Exec(`CREATE TRIGGER fail_item BEFORE INSERT ON library_items BEGIN SELECT RAISE(ABORT, 'disk full'); END`)
+	require.NoError(t, err)
+	require.NoError(t, we.w.Tick(context.Background()))
+	we.get(t, req.ID, Importing)
+	assert.Equal(t, filepath.Join(we.library, "a"), we.row(t, req.ID).ImportFolder.String)
+	// A copy killed part way leaves a temp file behind.
+	require.NoError(t, os.WriteFile(filepath.Join(we.library, "a", ".softwarr-tmp-123"), []byte("x"), 0o644))
+
+	_, err = we.svc.db.Exec(`DROP TRIGGER fail_item`)
+	require.NoError(t, err)
+	require.NoError(t, we.w.Tick(context.Background()))
+	we.assertImported(t, req.ID)
+
+	ents, err := os.ReadDir(we.library)
+	require.NoError(t, err)
+	require.Len(t, ents, 1, "one folder for the request, not a numbered second one")
+	assert.Equal(t, "a", ents[0].Name())
+	files, err := os.ReadDir(filepath.Join(we.library, "a"))
+	require.NoError(t, err)
+	assert.Len(t, files, 2)
+	var items int
+	require.NoError(t, we.svc.db.QueryRow("SELECT COUNT(*) FROM library_items WHERE request_id = ?", req.ID).Scan(&items))
+	assert.Equal(t, 1, items)
+}
+
+func TestWorkerImportLeavesAnotherItemsFolderAlone(t *testing.T) {
+	we := newWorkerEnv(t)
+	req := we.downloading(t, "a")
+	dl := t.TempDir()
+	we.fc.setItem(completedItem(t, dl, dl))
+	require.NoError(t, we.w.Tick(context.Background()))
+	we.get(t, req.ID, Importing)
+	// An earlier attempt claimed "a", and since then a library item
+	// took that name.
+	taken := filepath.Join(we.library, "a")
+	require.NoError(t, os.Mkdir(taken, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(taken, "keep.bin"), []byte("x"), 0o644))
+	_, err := we.svc.db.Exec(`UPDATE requests SET import_folder = ? WHERE id = ?`, taken, req.ID)
+	require.NoError(t, err)
+	_, err = we.svc.db.Exec(`INSERT INTO library_items (display_title, release_name, release_key, folder, imported_at) VALUES ('x', 'x', 'k', ?, 1)`, taken)
+	require.NoError(t, err)
+
+	require.NoError(t, we.w.Tick(context.Background()))
+	we.assertImported(t, req.ID)
+	assert.FileExists(t, filepath.Join(taken, "keep.bin"))
+	assert.DirExists(t, filepath.Join(we.library, "a (2)"))
+}
+
 func TestWorkerUsesPathMapping(t *testing.T) {
 	we := newWorkerEnv(t)
 	local := t.TempDir()

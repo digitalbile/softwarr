@@ -11,7 +11,7 @@ import (
 )
 
 const getRequest = `-- name: GetRequest :one
-SELECT r.id, r.requester_id, r.status, r."release", r.release_key, r.original_release, r.comment, r.display_title, r.deny_reason, r.error, r.client_id, r.client_item_id, r.progress, r.last_progress_at, r.approved_by, r.library_item_id, r.created_at, r.updated_at, u.username AS requester FROM requests r
+SELECT r.id, r.requester_id, r.status, r."release", r.release_key, r.original_release, r.comment, r.display_title, r.deny_reason, r.error, r.client_id, r.client_item_id, r.progress, r.last_progress_at, r.approved_by, r.library_item_id, r.created_at, r.updated_at, r.import_folder, u.username AS requester FROM requests r
 JOIN users u ON u.id = r.requester_id
 WHERE r.id = ?
 `
@@ -35,6 +35,7 @@ type GetRequestRow struct {
 	LibraryItemID   sql.NullInt64  `json:"library_item_id"`
 	CreatedAt       int64          `json:"created_at"`
 	UpdatedAt       int64          `json:"updated_at"`
+	ImportFolder    sql.NullString `json:"import_folder"`
 	Requester       string         `json:"requester"`
 }
 
@@ -60,6 +61,7 @@ func (q *Queries) GetRequest(ctx context.Context, id int64) (GetRequestRow, erro
 		&i.LibraryItemID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ImportFolder,
 		&i.Requester,
 	)
 	return i, err
@@ -101,7 +103,7 @@ func (q *Queries) InsertRequest(ctx context.Context, arg InsertRequestParams) (i
 }
 
 const listActivityRequests = `-- name: ListActivityRequests :many
-SELECT r.id, r.requester_id, r.status, r."release", r.release_key, r.original_release, r.comment, r.display_title, r.deny_reason, r.error, r.client_id, r.client_item_id, r.progress, r.last_progress_at, r.approved_by, r.library_item_id, r.created_at, r.updated_at, u.username AS requester FROM requests r
+SELECT r.id, r.requester_id, r.status, r."release", r.release_key, r.original_release, r.comment, r.display_title, r.deny_reason, r.error, r.client_id, r.client_item_id, r.progress, r.last_progress_at, r.approved_by, r.library_item_id, r.created_at, r.updated_at, r.import_folder, u.username AS requester FROM requests r
 JOIN users u ON u.id = r.requester_id
 WHERE r.status IN ('approved', 'downloading', 'importing', 'failed')
 ORDER BY r.id DESC
@@ -126,6 +128,7 @@ type ListActivityRequestsRow struct {
 	LibraryItemID   sql.NullInt64  `json:"library_item_id"`
 	CreatedAt       int64          `json:"created_at"`
 	UpdatedAt       int64          `json:"updated_at"`
+	ImportFolder    sql.NullString `json:"import_folder"`
 	Requester       string         `json:"requester"`
 }
 
@@ -157,6 +160,7 @@ func (q *Queries) ListActivityRequests(ctx context.Context) ([]ListActivityReque
 			&i.LibraryItemID,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.ImportFolder,
 			&i.Requester,
 		); err != nil {
 			return nil, err
@@ -173,7 +177,7 @@ func (q *Queries) ListActivityRequests(ctx context.Context) ([]ListActivityReque
 }
 
 const listAllRequests = `-- name: ListAllRequests :many
-SELECT r.id, r.requester_id, r.status, r."release", r.release_key, r.original_release, r.comment, r.display_title, r.deny_reason, r.error, r.client_id, r.client_item_id, r.progress, r.last_progress_at, r.approved_by, r.library_item_id, r.created_at, r.updated_at, u.username AS requester FROM requests r
+SELECT r.id, r.requester_id, r.status, r."release", r.release_key, r.original_release, r.comment, r.display_title, r.deny_reason, r.error, r.client_id, r.client_item_id, r.progress, r.last_progress_at, r.approved_by, r.library_item_id, r.created_at, r.updated_at, r.import_folder, u.username AS requester FROM requests r
 JOIN users u ON u.id = r.requester_id
 ORDER BY r.id DESC
 `
@@ -197,6 +201,7 @@ type ListAllRequestsRow struct {
 	LibraryItemID   sql.NullInt64  `json:"library_item_id"`
 	CreatedAt       int64          `json:"created_at"`
 	UpdatedAt       int64          `json:"updated_at"`
+	ImportFolder    sql.NullString `json:"import_folder"`
 	Requester       string         `json:"requester"`
 }
 
@@ -228,6 +233,7 @@ func (q *Queries) ListAllRequests(ctx context.Context) ([]ListAllRequestsRow, er
 			&i.LibraryItemID,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.ImportFolder,
 			&i.Requester,
 		); err != nil {
 			return nil, err
@@ -244,7 +250,7 @@ func (q *Queries) ListAllRequests(ctx context.Context) ([]ListAllRequestsRow, er
 }
 
 const listRequestsByUser = `-- name: ListRequestsByUser :many
-SELECT r.id, r.requester_id, r.status, r."release", r.release_key, r.original_release, r.comment, r.display_title, r.deny_reason, r.error, r.client_id, r.client_item_id, r.progress, r.last_progress_at, r.approved_by, r.library_item_id, r.created_at, r.updated_at, u.username AS requester FROM requests r
+SELECT r.id, r.requester_id, r.status, r."release", r.release_key, r.original_release, r.comment, r.display_title, r.deny_reason, r.error, r.client_id, r.client_item_id, r.progress, r.last_progress_at, r.approved_by, r.library_item_id, r.created_at, r.updated_at, r.import_folder, u.username AS requester FROM requests r
 JOIN users u ON u.id = r.requester_id
 WHERE r.requester_id = ?
 ORDER BY r.id DESC
@@ -269,6 +275,7 @@ type ListRequestsByUserRow struct {
 	LibraryItemID   sql.NullInt64  `json:"library_item_id"`
 	CreatedAt       int64          `json:"created_at"`
 	UpdatedAt       int64          `json:"updated_at"`
+	ImportFolder    sql.NullString `json:"import_folder"`
 	Requester       string         `json:"requester"`
 }
 
@@ -300,6 +307,7 @@ func (q *Queries) ListRequestsByUser(ctx context.Context, requesterID int64) ([]
 			&i.LibraryItemID,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.ImportFolder,
 			&i.Requester,
 		); err != nil {
 			return nil, err
@@ -316,7 +324,7 @@ func (q *Queries) ListRequestsByUser(ctx context.Context, requesterID int64) ([]
 }
 
 const listWorkerRequests = `-- name: ListWorkerRequests :many
-SELECT id, requester_id, status, "release", release_key, original_release, comment, display_title, deny_reason, error, client_id, client_item_id, progress, last_progress_at, approved_by, library_item_id, created_at, updated_at FROM requests
+SELECT id, requester_id, status, "release", release_key, original_release, comment, display_title, deny_reason, error, client_id, client_item_id, progress, last_progress_at, approved_by, library_item_id, created_at, updated_at, import_folder FROM requests
 WHERE status IN ('approved', 'downloading', 'importing')
 ORDER BY id
 `
@@ -349,6 +357,7 @@ func (q *Queries) ListWorkerRequests(ctx context.Context) ([]Request, error) {
 			&i.LibraryItemID,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.ImportFolder,
 		); err != nil {
 			return nil, err
 		}
@@ -361,6 +370,23 @@ func (q *Queries) ListWorkerRequests(ctx context.Context) ([]Request, error) {
 		return nil, err
 	}
 	return items, nil
+}
+
+const setRequestImportFolder = `-- name: SetRequestImportFolder :execrows
+UPDATE requests SET import_folder = ? WHERE id = ? AND status = 'importing'
+`
+
+type SetRequestImportFolderParams struct {
+	ImportFolder sql.NullString `json:"import_folder"`
+	ID           int64          `json:"id"`
+}
+
+func (q *Queries) SetRequestImportFolder(ctx context.Context, arg SetRequestImportFolderParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, setRequestImportFolder, arg.ImportFolder, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 const updateRequest = `-- name: UpdateRequest :execrows

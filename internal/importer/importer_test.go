@@ -283,3 +283,28 @@ func TestImportCancelDuringCopyStopsAndCleansUp(t *testing.T) {
 	ents, _ := os.ReadDir(lib)
 	assert.Empty(t, ents, "no folder or temp file is left")
 }
+
+func TestImportIntoRemovesStaleTempFiles(t *testing.T) {
+	src, lib := setup(t, map[string]string{"a.bin": "hello"})
+	folder, err := ClaimFolder(lib, "App")
+	require.NoError(t, err)
+	write(t, filepath.Join(folder, ".softwarr-tmp-111"), "partial")
+	write(t, filepath.Join(folder, "sub", ".softwarr-tmp-222"), "partial")
+
+	res, err := ImportInto(context.Background(), src, folder)
+	require.NoError(t, err)
+	assert.Equal(t, folder, res.Folder)
+	assert.NoFileExists(t, filepath.Join(folder, ".softwarr-tmp-111"))
+	assert.NoFileExists(t, filepath.Join(folder, "sub", ".softwarr-tmp-222"))
+	assert.FileExists(t, filepath.Join(folder, "a.bin"))
+}
+
+func TestImportIntoRemovesFolderOnFailure(t *testing.T) {
+	src, lib := setup(t, map[string]string{"a.bin": "hello"})
+	folder, err := ClaimFolder(lib, "App")
+	require.NoError(t, err)
+	src.Files = append(src.Files, downloadclient.File{Path: "missing.bin"})
+	_, err = ImportInto(context.Background(), src, folder)
+	require.Error(t, err)
+	assert.NoDirExists(t, folder)
+}

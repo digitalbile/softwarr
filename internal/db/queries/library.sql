@@ -52,3 +52,6 @@ UPDATE library_items SET download_count = download_count + 1, last_downloaded_at
 
 -- name: LatestTorrentImportMode :one
 SELECT import_mode FROM library_items WHERE protocol = 'torrent' ORDER BY imported_at DESC, id DESC LIMIT 1;
+
+-- name: ListAvailableLibraryFolders :many
+SELECT folder FROM library_items WHERE status = 'available';
