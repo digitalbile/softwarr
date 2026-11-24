@@ -477,3 +477,44 @@ func TestReplaceOnFailedChecks(t *testing.T) {
 	assert.Equal(t, "tracker gone", got.Error)
 	assert.Equal(t, "a", got.Release.Title)
 }
+
+func TestRetryChecksLikeApprove(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	r := e.failedDownload(t, "a")
+	status := func() Status {
+		got, err := e.svc.Get(ctx, e.admin, r.ID)
+		require.NoError(t, err)
+		return got.Status
+	}
+
+	e.setSettings(t, func(s *settings.Settings) { s.LibraryRoot = "" })
+	_, err := e.svc.Retry(ctx, e.admin, r.ID)
+	assert.ErrorIs(t, err, ErrNoLibraryRoot)
+	assert.Equal(t, Failed, status())
+	e.setSettings(t, func(s *settings.Settings) { s.LibraryRoot = "/library" })
+
+	_, err = e.svc.db.Exec(`UPDATE download_clients SET enabled = 0`)
+	require.NoError(t, err)
+	_, err = e.svc.Retry(ctx, e.admin, r.ID)
+	assert.ErrorIs(t, err, ErrNoClient)
+	assert.Equal(t, Failed, status())
+	_, err = e.svc.db.Exec(`UPDATE download_clients SET enabled = 1`)
+	require.NoError(t, err)
+
+	_, err = e.svc.db.Exec(`INSERT INTO library_items (display_title, release_name, release_key, folder, imported_at) VALUES ('a','a',?, '/library/a', 1)`, rel("a").Key())
+	require.NoError(t, err)
+	_, err = e.svc.Retry(ctx, e.admin, r.ID)
+	assert.ErrorIs(t, err, ErrInLibrary)
+	assert.Equal(t, Failed, status())
+}
+
+func TestRetryOfRequestThatIsNotFailedConflicts(t *testing.T) {
+	e := newEnv(t)
+	r, err := e.svc.Create(context.Background(), e.user, rel("a"), "")
+	require.NoError(t, err)
+	_, err = e.svc.Retry(context.Background(), e.admin, r.ID)
+	assert.ErrorIs(t, err, ErrConflict)
+	_, err = e.svc.Retry(context.Background(), e.admin, 999)
+	assert.ErrorIs(t, err, ErrNotFound)
+}

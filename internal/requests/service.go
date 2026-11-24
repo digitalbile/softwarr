@@ -71,6 +71,23 @@ func validateRelease(r prowlarr.Release) error {
 	return nil
 }
 
+// checkReady runs the checks shared by approving and retrying: the worker
+// needs a library folder to import into and a download client for the
+// release, and a release already in the library mustn't be fetched again.
+func (s *Service) checkReady(ctx context.Context, rel prowlarr.Release) error {
+	st, err := s.s.Get(ctx)
+	if err != nil {
+		return err
+	}
+	if st.LibraryRoot == "" {
+		return ErrNoLibraryRoot
+	}
+	if err := s.checkNotInLibrary(ctx, rel.Key()); err != nil {
+		return err
+	}
+	return s.checkClient(ctx, rel.Protocol)
+}
+
 func (s *Service) checkClient(ctx context.Context, protocol string) error {
 	_, ok, err := downloadclient.PickClient(ctx, s.q, protocol)
 	if err != nil {
@@ -151,13 +168,6 @@ func (s *Service) Create(ctx context.Context, p auth.Principal, rel prowlarr.Rel
 }
 
 func (s *Service) Approve(ctx context.Context, p auth.Principal, id int64, o ApproveOpts) (Request, error) {
-	st, err := s.s.Get(ctx)
-	if err != nil {
-		return Request{}, err
-	}
-	if st.LibraryRoot == "" {
-		return Request{}, ErrNoLibraryRoot
-	}
 	cur, err := s.load(ctx, id)
 	if err != nil {
 		return Request{}, err
@@ -178,14 +188,11 @@ func (s *Service) Approve(ctx context.Context, p auth.Principal, id int64, o App
 			return Request{}, err
 		}
 		rel = *o.Replacement
-		if err := s.checkNotInLibrary(ctx, rel.Key()); err != nil {
-			return Request{}, err
-		}
 		if replacement, err = prowlarr.MarshalStored(rel); err != nil {
 			return Request{}, err
 		}
 	}
-	if err := s.checkClient(ctx, rel.Protocol); err != nil {
+	if err := s.checkReady(ctx, rel); err != nil {
 		return Request{}, err
 	}
 	title := strings.TrimSpace(o.DisplayTitle)
@@ -264,7 +271,19 @@ func (s *Service) Abandon(ctx context.Context, p auth.Principal, id int64) (Requ
 	return req, conflictIfInvalid(err)
 }
 
+// Retry sends a failed request back to the worker with the same release,
+// after the same checks as an approval.
 func (s *Service) Retry(ctx context.Context, p auth.Principal, id int64) (Request, error) {
+	cur, err := s.load(ctx, id)
+	if err != nil {
+		return Request{}, err
+	}
+	if _, err := Next(cur.Status, ActRetry); err != nil {
+		return Request{}, ErrConflict
+	}
+	if err := s.checkReady(ctx, cur.Release); err != nil {
+		return Request{}, err
+	}
 	req, err := s.transition(ctx, id, ActRetry, func(u *dbq.UpdateRequestParams) { u.Error = "" })
 	return req, conflictIfInvalid(err)
 }
