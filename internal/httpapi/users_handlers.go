@@ -98,14 +98,15 @@ func (s *server) handleUpdateUser(w http.ResponseWriter, r *http.Request) {
 		writeUserError(w, err)
 		return
 	}
+	// Open event streams carry the old role; make them reconnect, even if
+	// ending the sessions below fails.
+	defer s.Broker.DisconnectUser(id)
 	if user.Status == "disabled" {
 		if err := s.Sessions.DeleteForUser(r.Context(), id); err != nil {
 			serverError(w, err)
 			return
 		}
 	}
-	// Open event streams carry the old role; make them reconnect.
-	s.Broker.DisconnectUser(id)
 	writeJSON(w, http.StatusOK, user)
 }
 
@@ -122,11 +123,11 @@ func (s *server) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
 		writeUserError(w, err)
 		return
 	}
+	defer s.Broker.DisconnectUser(id)
 	if err := s.Sessions.DeleteForUser(r.Context(), id); err != nil {
 		serverError(w, err)
 		return
 	}
-	s.Broker.DisconnectUser(id)
 	w.WriteHeader(http.StatusNoContent)
 }
 
