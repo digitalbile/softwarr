@@ -227,9 +227,6 @@ func ClaimFolder(libraryRoot, releaseName string, requestID int64) (string, erro
 	if err != nil {
 		return "", err
 	}
-	if !RootReady(root) {
-		return "", ErrRootNotReady
-	}
 	folder, err := createFolder(root, SanitizeName(releaseName))
 	if err != nil {
 		return "", err

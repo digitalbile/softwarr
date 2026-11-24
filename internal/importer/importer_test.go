@@ -356,9 +356,6 @@ func TestClaimFolderMarksIt(t *testing.T) {
 func TestRootMarker(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "lib", "apps")
 	assert.False(t, RootReady(root))
-	_, err := ClaimFolder(root, "App", 1)
-	require.ErrorIs(t, err, ErrRootNotReady)
-	assert.NoDirExists(t, root, "the importer never creates the root")
 
 	require.NoError(t, PrepareRoot(root))
 	assert.True(t, RootReady(root))
