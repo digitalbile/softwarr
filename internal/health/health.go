@@ -20,7 +20,7 @@ import (
 	"github.com/digitalbile/softwarr/internal/db/dbq"
 	"github.com/digitalbile/softwarr/internal/downloadclient"
 	"github.com/digitalbile/softwarr/internal/events"
-	"github.com/digitalbile/softwarr/internal/importer"
+	"github.com/digitalbile/softwarr/internal/library"
 	"github.com/digitalbile/softwarr/internal/notify"
 	"github.com/digitalbile/softwarr/internal/pathmap"
 	"github.com/digitalbile/softwarr/internal/prowlarr"
@@ -93,7 +93,7 @@ func (c *Checker) Run(ctx context.Context) []Check {
 	}
 	tasks = append(tasks,
 		task{"prowlarr", "Can't reach Prowlarr: it didn't respond within %s.", func(ctx context.Context) []Check { return []Check{c.prowlarr(ctx, st)} }},
-		task{"library", "The library folder check didn't respond within %s.", func(ctx context.Context) []Check { return []Check{c.library(st)} }},
+		task{"library", "The library folder check didn't respond within %s.", func(ctx context.Context) []Check { return []Check{c.library(ctx, st)} }},
 		task{"hardlinks", "The import check didn't respond within %s.", func(ctx context.Context) []Check { return c.hardlinks(ctx) }},
 		task{"oidc", "Can't reach the OIDC provider: it didn't respond within %s.", func(ctx context.Context) []Check { return c.oidc(ctx, st) }},
 	)
@@ -214,10 +214,17 @@ func (c *Checker) downloadClient(ctx context.Context, row dbq.DownloadClient) Ch
 	return ok(id, fmt.Sprintf("Download client %s is reachable.", row.Name))
 }
 
-func (c *Checker) library(st settings.Settings) Check {
+func (c *Checker) library(ctx context.Context, st settings.Settings) Check {
 	root := st.LibraryRoot
 	if root == "" {
 		return warn("library", "No library folder is set.")
+	}
+	// Missing or empty while items are recorded in it: most likely the
+	// volume isn't mounted, so imports wait and items are kept.
+	if n, err := library.ItemsIn(ctx, c.q, root); err == nil && n > 0 {
+		if unmounted, err := library.RootUnmounted(ctx, c.q, root); err == nil && unmounted {
+			return warn("library", fmt.Sprintf("The library folder %s looks unmounted. It is missing or empty, but the library still has items in it. Imports wait until it is back.", root))
+		}
 	}
 	f, err := os.CreateTemp(root, ".softwarr-health-*")
 	if err != nil {
@@ -226,9 +233,6 @@ func (c *Checker) library(st settings.Settings) Check {
 	name := f.Name()
 	f.Close()
 	os.Remove(name)
-	if !importer.RootReady(root) {
-		return warn("library", fmt.Sprintf("The library folder %s has no %s file, so softwarr treats it as not mounted: imports wait and items can't be removed. If the folder is mounted, create an empty file named %s in it.", root, importer.RootMarker, importer.RootMarker))
-	}
 	return ok("library", "The library folder is writable.")
 }
 

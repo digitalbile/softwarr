@@ -429,7 +429,7 @@ func TestWorkerImportRedoesAfterRecordFails(t *testing.T) {
 	assert.Equal(t, []string{"a"}, subdirs(t, we.library), "one folder for the request, not a numbered second one")
 	files, err := os.ReadDir(filepath.Join(we.library, "a"))
 	require.NoError(t, err)
-	assert.Len(t, files, 3, "two files and the item marker, no temp file")
+	assert.Len(t, files, 2, "no temp file is left")
 	var items int
 	require.NoError(t, we.svc.db.QueryRow("SELECT COUNT(*) FROM library_items WHERE request_id = ?", req.ID).Scan(&items))
 	assert.Equal(t, 1, items)

@@ -17,7 +17,6 @@ import (
 	"github.com/digitalbile/softwarr/internal/db/dbq"
 	"github.com/digitalbile/softwarr/internal/downloadclient"
 	"github.com/digitalbile/softwarr/internal/events"
-	"github.com/digitalbile/softwarr/internal/importer"
 	"github.com/digitalbile/softwarr/internal/notify"
 	"github.com/digitalbile/softwarr/internal/prowlarr"
 	"github.com/digitalbile/softwarr/internal/settings"
@@ -50,7 +49,6 @@ func newEnv(t *testing.T) *env {
 	t.Helper()
 	_, q := testutil.NewDB(t)
 	e := &env{q: q, st: settings.NewStore(q), broker: events.NewBroker(), root: t.TempDir(), prowOK: true}
-	require.NoError(t, importer.PrepareRoot(e.root))
 	prow := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !e.prowOK {
 			http.Error(w, "boom", http.StatusInternalServerError)
@@ -128,12 +126,25 @@ func TestHealthLibraryMissing(t *testing.T) {
 	assert.Equal(t, "The library folder "+s.LibraryRoot+" doesn't exist or isn't writable.", m["library"].Message)
 }
 
-func TestHealthLibraryMarkerMissing(t *testing.T) {
+func TestHealthLibraryLooksUnmounted(t *testing.T) {
 	e := newEnv(t)
-	require.NoError(t, os.Remove(filepath.Join(e.root, importer.RootMarker)))
-	m := byID(e.c.Run(context.Background()))
+	ctx := context.Background()
+	m := byID(e.c.Run(ctx))
+	assert.Equal(t, "ok", m["library"].Level, "an empty library with no items is fine")
+
+	_, err := e.q.InsertLibraryItem(ctx, dbq.InsertLibraryItemParams{
+		DisplayTitle: "x", ReleaseName: "x", ReleaseKey: "k", Folder: filepath.Join(e.root, "Item"), ImportedAt: 1,
+	})
+	require.NoError(t, err)
+	m = byID(e.c.Run(ctx))
 	assert.Equal(t, "warning", m["library"].Level)
-	assert.Equal(t, "The library folder "+e.root+" has no .softwarr-library file, so softwarr treats it as not mounted: imports wait and items can't be removed. If the folder is mounted, create an empty file named .softwarr-library in it.", m["library"].Message)
+	assert.Equal(t, "The library folder "+e.root+" looks unmounted. It is missing or empty, but the library still has items in it. Imports wait until it is back.", m["library"].Message)
+
+	require.NoError(t, os.RemoveAll(e.root))
+	assert.Equal(t, "warning", byID(e.c.Run(ctx))["library"].Level)
+
+	require.NoError(t, os.MkdirAll(filepath.Join(e.root, "Item"), 0o755))
+	assert.Equal(t, "ok", byID(e.c.Run(ctx))["library"].Level)
 }
 
 func TestHealthPathMapping(t *testing.T) {

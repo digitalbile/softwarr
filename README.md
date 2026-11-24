@@ -41,13 +41,11 @@ The image follows the linuxserver convention. It starts as root, creates a user 
 
 softwarr does not change ownership of your downloads or library folders.
 
-### Marker files in the library
+### Changing the library folder
 
-When you set the library folder in Settings, softwarr creates it if needed and puts a `.softwarr-library` file in it. softwarr also puts a `.softwarr-item` file in each item folder it creates. Leave both in place.
+Changing the library folder in Settings doesn't move existing items. They stay where they were imported and are still served from there. Moving them is planned as a separate action.
 
-The library file tells softwarr the library volume is mounted. If it's missing, for example because the volume isn't mounted and the container sees an empty folder, softwarr doesn't import into the folder or remove anything from it, and the System page shows a warning. Imports wait and resume once the file is back. If the folder really is mounted and the file was deleted, create an empty file with that name.
-
-The item files show which folders belong to softwarr. If you move the library to a new path, move the item folders with it. softwarr then only removes a folder at the new path when its `.softwarr-item` file names that item.
+If the library folder is missing, or empty while softwarr has items in it, softwarr treats it as unmounted: imports wait, items are kept, and the System page shows a warning.
 
 ### Hardlinks
 

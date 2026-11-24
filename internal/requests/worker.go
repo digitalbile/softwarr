@@ -476,7 +476,7 @@ func (w *Worker) importFolder(ctx context.Context, row dbq.Request, rel prowlarr
 			if err := os.RemoveAll(prev); err != nil {
 				return "", err
 			}
-			if err := importer.ClaimFolderAt(prev, row.ID); err == nil {
+			if err := os.Mkdir(prev, 0o755); err == nil {
 				folder = prev
 			}
 		} else {
@@ -484,7 +484,7 @@ func (w *Worker) importFolder(ctx context.Context, row dbq.Request, rel prowlarr
 		}
 	}
 	if folder == "" {
-		if folder, err = importer.ClaimFolder(absRoot, rel.Title, row.ID); err != nil {
+		if folder, err = importer.ClaimFolder(absRoot, rel.Title); err != nil {
 			return "", err
 		}
 	}
@@ -495,7 +495,7 @@ func (w *Worker) importFolder(ctx context.Context, row dbq.Request, rel prowlarr
 		err = ErrConflict
 	}
 	if err != nil {
-		os.RemoveAll(folder) // only the marker so far
+		os.Remove(folder) // still empty
 		return "", err
 	}
 	return folder, nil
