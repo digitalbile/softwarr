@@ -3,8 +3,10 @@ package importer
 import (
 	"context"
 	"io"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"syscall"
 	"testing"
@@ -46,7 +48,9 @@ func setup(t *testing.T, files map[string]string) (Source, string) {
 	base := t.TempDir()
 	lib := t.TempDir()
 	var fs []downloadclient.File
-	for p, c := range files {
+	// Sorted, so tests that fail the Nth file know which one that is.
+	for _, p := range slices.Sorted(maps.Keys(files)) {
+		c := files[p]
 		write(t, filepath.Join(base, filepath.FromSlash(p)), c)
 		fs = append(fs, downloadclient.File{Path: p, Size: int64(len(c))})
 	}
