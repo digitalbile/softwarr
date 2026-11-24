@@ -157,15 +157,30 @@ func TestLibraryAdminOnlyMutations(t *testing.T) {
 	assert.Equal(t, 404, oc.do("DELETE", "/api/v1/library/"+itoa(id), nil).StatusCode)
 }
 
-func TestDeleteWithMissingFolderConflicts(t *testing.T) {
+func TestDeleteWithMissingRootConflicts(t *testing.T) {
 	ts := newTestServer(t)
 	ts.loginAsOwner()
-	id, folder := addLibraryItem(t, ts, t.TempDir(), "Item", 0, map[string]string{"a.txt": "a"})
-	require.NoError(t, os.RemoveAll(folder))
+	root := t.TempDir()
+	id, _ := addLibraryItem(t, ts, root, "Item", 0, map[string]string{"a.txt": "a"})
+	require.NoError(t, os.RemoveAll(root))
 	resp := ts.do("DELETE", "/api/v1/library/"+itoa(id), nil)
 	assert.Equal(t, http.StatusConflict, resp.StatusCode)
 	assert.Equal(t, "The library folder for this item is missing. Check that the library path is mounted.", errorBody(t, resp))
 	assert.Equal(t, http.StatusOK, ts.do("GET", "/api/v1/library/"+itoa(id), nil).StatusCode)
+}
+
+func TestItemWithMissingFolderIsGoneAndCanBeDeleted(t *testing.T) {
+	ts := newTestServer(t)
+	ts.loginAsOwner()
+	root := t.TempDir()
+	id, folder := addLibraryItem(t, ts, root, "Item", 0, map[string]string{"a.txt": "a"})
+	addLibraryItem(t, ts, root, "Other", 0, map[string]string{"b.txt": "b"})
+	require.NoError(t, os.RemoveAll(folder))
+
+	resp := ts.do("GET", "/api/v1/library/"+itoa(id)+"/download", nil)
+	assert.Equal(t, http.StatusGone, resp.StatusCode)
+	assert.Equal(t, http.StatusNoContent, ts.do("DELETE", "/api/v1/library/"+itoa(id), nil).StatusCode)
+	assert.Equal(t, http.StatusNotFound, ts.do("GET", "/api/v1/library/"+itoa(id), nil).StatusCode)
 }
 
 func TestDownloadMissingFileReturnsGone(t *testing.T) {
