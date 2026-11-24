@@ -172,12 +172,15 @@ func (s *server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 		serverError(w, err)
 		return
 	}
-	s.Broker.DisconnectUser(p.UserID)
 	if !p.ViaAPIKey {
 		if err := s.startSession(w, r, p.UserID); err != nil {
+			s.Broker.DisconnectUser(p.UserID)
 			serverError(w, err)
 			return
 		}
 	}
+	// After the new session exists, so this browser's stream reconnects
+	// with it instead of failing on the deleted one.
+	s.Broker.DisconnectUser(p.UserID)
 	w.WriteHeader(http.StatusNoContent)
 }
