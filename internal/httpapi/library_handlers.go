@@ -26,11 +26,11 @@ func writeLibraryError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusBadRequest, err.Error())
 	case errors.Is(err, library.ErrFilesMissing):
 		writeError(w, http.StatusGone, err.Error())
-	case errors.Is(err, library.ErrFolderMissing), errors.Is(err, library.ErrFolderNotConfirmed):
+	case errors.Is(err, library.ErrFolderMissing):
 		writeError(w, http.StatusConflict, err.Error())
 	case errors.Is(err, library.ErrUnsafePath):
 		slog.Warn("library item folder refused", "err", err)
-		writeError(w, http.StatusConflict, "The folder for this item isn't a plain folder inside the library folder, so softwarr left it alone. Check the library folder in Settings.")
+		writeError(w, http.StatusConflict, "softwarr left the folder for this item alone because it isn't a plain folder it can safely use.")
 	default:
 		serverError(w, err)
 	}

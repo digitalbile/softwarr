@@ -26,7 +26,6 @@ func addLibraryItem(t *testing.T, ts *testServer, root, name string, requesterID
 	cur, err := ts.Deps.Settings.Get(ctx)
 	require.NoError(t, err)
 	if cur.LibraryRoot != root {
-		require.NoError(t, importer.PrepareRoot(root))
 		cur.LibraryRoot = root
 		require.NoError(t, ts.Deps.Settings.Save(ctx, cur))
 	}
@@ -46,7 +45,6 @@ func addLibraryItem(t *testing.T, ts *testServer, root, name string, requesterID
 		require.NoError(t, err)
 		reqID, _ = r.LastInsertId()
 	}
-	require.NoError(t, importer.MarkItemFolder(folder, reqID))
 	rel := prowlarr.Release{GUID: name, Title: name, Indexer: "idx", Protocol: "torrent", InfoHash: name}
 	id, err := library.CreateItem(ctx, ts.Q, reqID, name+" title", rel, res, ts.Clock.Now())
 	require.NoError(t, err)
@@ -205,7 +203,7 @@ func TestDownloadAndDeleteRefuseSymlinkedFolder(t *testing.T) {
 	require.NoError(t, os.RemoveAll(folder))
 	require.NoError(t, os.Symlink(elsewhere, folder))
 
-	const msg = "The folder for this item isn't a plain folder inside the library folder, so softwarr left it alone. Check the library folder in Settings."
+	const msg = "softwarr left the folder for this item alone because it isn't a plain folder it can safely use."
 	resp := ts.do("GET", "/api/v1/library/"+itoa(id)+"/download", nil)
 	assert.Equal(t, http.StatusConflict, resp.StatusCode)
 	assert.Equal(t, msg, errorBody(t, resp))
@@ -215,36 +213,38 @@ func TestDownloadAndDeleteRefuseSymlinkedFolder(t *testing.T) {
 	assert.FileExists(t, filepath.Join(elsewhere, "a.txt"))
 }
 
-func TestDeleteAfterRootRepointedAtDownloadsConflicts(t *testing.T) {
+// setLibraryRoot changes the library root setting without touching disk.
+func setLibraryRoot(t *testing.T, ts *testServer, root string) {
+	t.Helper()
+	cur, err := ts.Deps.Settings.Get(context.Background())
+	require.NoError(t, err)
+	cur.LibraryRoot = root
+	require.NoError(t, ts.Deps.Settings.Save(context.Background(), cur))
+}
+
+func TestDeleteAfterRootRepointedAtDownloadsLeavesSeedingFiles(t *testing.T) {
 	ts := newTestServer(t)
 	ts.loginAsOwner()
-	id, _ := addLibraryItem(t, ts, t.TempDir(), "Thing", 0, map[string]string{"setup.dmg": "x"})
+	id, folder := addLibraryItem(t, ts, t.TempDir(), "Thing", 0, map[string]string{"setup.dmg": "x"})
 	downloads := t.TempDir()
 	seeding := filepath.Join(downloads, "Thing", "setup.dmg")
 	require.NoError(t, os.MkdirAll(filepath.Dir(seeding), 0o755))
 	require.NoError(t, os.WriteFile(seeding, []byte("x"), 0o644))
-	cur, err := ts.Deps.Settings.Get(context.Background())
-	require.NoError(t, err)
-	cur.LibraryRoot = downloads
-	require.NoError(t, ts.Deps.Settings.Save(context.Background(), cur))
+	setLibraryRoot(t, ts, downloads)
 
-	resp := ts.do("DELETE", "/api/v1/library/"+itoa(id), nil)
-	assert.Equal(t, http.StatusConflict, resp.StatusCode)
-	assert.Equal(t, "softwarr couldn't confirm that the folder for this item is its own, so it left it alone. Check the library folder in Settings.", errorBody(t, resp))
+	assert.Equal(t, http.StatusNoContent, ts.do("DELETE", "/api/v1/library/"+itoa(id), nil).StatusCode)
+	assert.NoDirExists(t, folder)
 	assert.FileExists(t, seeding)
 }
 
-func TestDownloadFindsFolderAfterRootMoves(t *testing.T) {
+func TestItemStaysAtItsFolderAfterRootChange(t *testing.T) {
 	ts := newTestServer(t)
 	ts.loginAsOwner()
 	root := t.TempDir()
-	id, _ := addLibraryItem(t, ts, root, "Item", 0, map[string]string{"x.dmg": "0123456789"})
-	moved := filepath.Join(t.TempDir(), "moved")
-	require.NoError(t, os.Rename(root, moved))
-	cur, err := ts.Deps.Settings.Get(context.Background())
-	require.NoError(t, err)
-	cur.LibraryRoot = " " + moved + " "
-	require.NoError(t, ts.Deps.Settings.Save(context.Background(), cur))
+	id, folder := addLibraryItem(t, ts, root, "Item", 0, map[string]string{"x.dmg": "0123456789"})
+	gone, goneFolder := addLibraryItem(t, ts, root, "Gone", 0, map[string]string{"a.txt": "a"})
+	require.NoError(t, os.RemoveAll(goneFolder))
+	setLibraryRoot(t, ts, " "+t.TempDir()+" ")
 
 	resp := ts.do("GET", "/api/v1/library/"+itoa(id)+"/download", nil)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
@@ -252,7 +252,10 @@ func TestDownloadFindsFolderAfterRootMoves(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "0123456789", string(body))
 	assert.Equal(t, http.StatusNoContent, ts.do("DELETE", "/api/v1/library/"+itoa(id), nil).StatusCode)
-	assert.NoDirExists(t, filepath.Join(moved, "Item"))
+	assert.NoDirExists(t, folder)
+
+	assert.Equal(t, http.StatusGone, ts.do("GET", "/api/v1/library/"+itoa(gone)+"/download", nil).StatusCode)
+	assert.Equal(t, http.StatusNoContent, ts.do("DELETE", "/api/v1/library/"+itoa(gone), nil).StatusCode)
 }
 
 func TestDownloadUpdatesCountAndTime(t *testing.T) {

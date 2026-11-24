@@ -9,7 +9,6 @@ INSERT INTO library_files (item_id, rel_path, size) VALUES (?, ?, ?);
 -- name: ListAvailableLibraryItems :many
 SELECT li.id, li.display_title, li.release_name, li.folder, li.total_size, li.protocol, li.indexer, li.import_mode,
        li.retention_days, li.imported_at, li.last_downloaded_at, li.download_count,
-       CAST(COALESCE(li.request_id, 0) AS INTEGER) AS request_id,
        CAST(COALESCE(r.requester_id, 0) AS INTEGER) AS requester_id,
        CAST(COALESCE(u.username, '') AS TEXT) AS requester,
        CAST(COALESCE(r.comment, '') AS TEXT) AS comment,
@@ -24,7 +23,6 @@ ORDER BY li.imported_at DESC, li.id DESC;
 -- name: GetAvailableLibraryItem :one
 SELECT li.id, li.display_title, li.release_name, li.folder, li.total_size, li.protocol, li.indexer, li.import_mode,
        li.retention_days, li.imported_at, li.last_downloaded_at, li.download_count,
-       CAST(COALESCE(li.request_id, 0) AS INTEGER) AS request_id,
        CAST(COALESCE(r.requester_id, 0) AS INTEGER) AS requester_id,
        CAST(COALESCE(u.username, '') AS TEXT) AS requester,
        CAST(COALESCE(r.comment, '') AS TEXT) AS comment,
