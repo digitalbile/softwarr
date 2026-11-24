@@ -16,8 +16,14 @@ These came from the code review of the phase-1 branch.
 - `redactURL` keeps the URL path. A tracker that puts its passkey in the path, not the query string, could still show it in a request's error text.
 - If an install already has an admin claim name saved with an empty value, it can't save settings until that pair is fixed. The error message explains what to change.
 - If an admin resets a user's password while that user is signed in, the user's live updates keep retrying every 30 seconds. The user only reaches the change-password page on their next ordinary request. The reconnect check could call `refresh()` when `/auth/me` reports `mustChangePassword`.
-- The `.softwarr-item` marker holds only a request ID. Say a seeding folder came from a torrent of someone else's softwarr library, and the library folder were later pointed at the downloads folder. A marker in that seeding folder could then match a small request ID. A per-install UUID in both markers would close this.
-- Settings writes the library folder's `.softwarr-library` marker before it validates the rest of the save. A save that fails later, for example on an OIDC setting, has already created and marked the new folder.
+- If someone removes the last item's folder by hand, that item can't be deleted. The library folder is then empty while the database still lists an item under it, which looks the same as an unmounted drive. Delete keeps returning 409 until something else is in the library folder.
+- When a request is imported again after the library folder has changed, its earlier import folder stays behind in the old location. The worker logs the path. An admin has to remove it by hand.
+- The removal guard checks that an item's folder isn't a symlink, but it doesn't check the folders above it, because a library folder that is a symlink is a normal setup. Only softwarr writes the stored folder path, so this matters only if the database is edited by hand.
+- A library folder at `/` can't delete items, because the guard refuses folders directly under `/`.
+
+## Planned features
+
+- A "move library" action. Right now, changing the library folder in settings leaves existing items at their old location: they still download and delete there if their files haven't moved, and show as gone if they have. The action would check each item's files at the new location, then update the saved paths. Radarr handles this the same way, through its editor.
 
 ## Not yet tested against live services
 
