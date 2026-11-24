@@ -148,6 +148,9 @@ func validate(in Settings) error {
 	if in.OIDC.Enabled && in.ExternalURL == "" {
 		return errInput("Set the external URL before enabling OIDC.")
 	}
+	if in.LibraryRoot != "" && !filepath.IsAbs(in.LibraryRoot) {
+		return errInput("The library folder must be an absolute path.")
+	}
 	if in.DefaultRetentionDays < 0 {
 		return errInput("Retention days cannot be negative.")
 	}
