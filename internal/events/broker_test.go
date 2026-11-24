@@ -78,3 +78,29 @@ func TestBrokerSlowSubscriberDoesNotBlock(t *testing.T) {
 	}
 	require.Len(t, slow, 32)
 }
+
+func TestBrokerDisconnectUserClosesOnlyTheirStreams(t *testing.T) {
+	b := NewBroker()
+	a1, c1 := b.Subscribe(1, true)
+	defer c1()
+	a2, c2 := b.Subscribe(1, true)
+	defer c2()
+	other, c3 := b.Subscribe(2, true)
+	defer c3()
+
+	b.DisconnectUser(1)
+	for _, ch := range []<-chan Message{a1, a2} {
+		select {
+		case _, ok := <-ch:
+			require.False(t, ok, "the channel is closed")
+		case <-time.After(time.Second):
+			t.Fatal("stream not closed")
+		}
+	}
+	require.Equal(t, 1, b.SubscriberCount())
+	b.Publish(Message{Type: TypeHealth, Admins: true})
+	_, ok := recv(t, other)
+	require.True(t, ok)
+	c1() // cancelling after a disconnect is fine
+	b.DisconnectUser(1)
+}

@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -47,10 +48,19 @@ func (s *server) handleEvents(w http.ResponseWriter, r *http.Request) {
 		case <-s.Done:
 			return
 		case <-ping.C:
+			// The stream was opened with the caller's role at the time. End
+			// it if that no longer holds; the client reconnects with the
+			// right scope, or gets signed out.
+			if !s.streamStillValid(r, p) {
+				return
+			}
 			if _, err := fmt.Fprint(w, ": ping\n\n"); err != nil {
 				return
 			}
-		case m := <-ch:
+		case m, open := <-ch:
+			if !open {
+				return // the broker disconnected this user
+			}
 			data, err := json.Marshal(m.Data)
 			if err != nil {
 				continue
@@ -63,4 +73,38 @@ func (s *server) handleEvents(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+}
+
+// streamStillValid reports whether the caller of an open stream would still
+// get the same stream: the session or API key still works, and the user is
+// active with the same admin flag and no pending password change.
+func (s *server) streamStillValid(r *http.Request, p auth.Principal) bool {
+	ctx := r.Context()
+	if p.ViaAPIKey {
+		st, err := s.Settings.Get(ctx)
+		if err != nil {
+			return true // can't tell; try again on the next ping
+		}
+		key := r.Header.Get(apiKeyHeader)
+		return st.APIKey != "" && subtle.ConstantTimeCompare([]byte(key), []byte(st.APIKey)) == 1
+	}
+	c, err := r.Cookie(sessionCookie)
+	if err != nil {
+		return false
+	}
+	userID, err := s.Sessions.Check(ctx, c.Value)
+	if errors.Is(err, auth.ErrNoSession) || (err == nil && userID != p.UserID) {
+		return false
+	}
+	if err != nil {
+		return true
+	}
+	user, err := s.Users.Get(ctx, userID)
+	if errors.Is(err, auth.ErrNotFound) {
+		return false
+	}
+	if err != nil {
+		return true
+	}
+	return user.Status == "active" && user.IsAdmin == p.IsAdmin && !user.MustChangePassword
 }

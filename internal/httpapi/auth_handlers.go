@@ -122,6 +122,10 @@ func (s *server) handleLogout(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		s.clearSessionCookie(w, r)
+		// Streams on the user's other sessions reconnect without trouble.
+		if p, ok := auth.FromContext(r.Context()); ok {
+			s.Broker.DisconnectUser(p.UserID)
+		}
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -168,6 +172,7 @@ func (s *server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 		serverError(w, err)
 		return
 	}
+	s.Broker.DisconnectUser(p.UserID)
 	if !p.ViaAPIKey {
 		if err := s.startSession(w, r, p.UserID); err != nil {
 			serverError(w, err)

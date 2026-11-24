@@ -104,6 +104,8 @@ func (s *server) handleUpdateUser(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	// Open event streams carry the old role; make them reconnect.
+	s.Broker.DisconnectUser(id)
 	writeJSON(w, http.StatusOK, user)
 }
 
@@ -124,6 +126,7 @@ func (s *server) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
 		serverError(w, err)
 		return
 	}
+	s.Broker.DisconnectUser(id)
 	w.WriteHeader(http.StatusNoContent)
 }
 
