@@ -51,3 +51,6 @@ ORDER BY r.id DESC;
 -- name: UpdateRequestProgress :execrows
 UPDATE requests SET progress = ?, last_progress_at = ?, updated_at = ?
 WHERE id = ? AND status = 'downloading';
+
+-- name: SetRequestImportFolder :execrows
+UPDATE requests SET import_folder = ? WHERE id = ? AND status = 'importing';

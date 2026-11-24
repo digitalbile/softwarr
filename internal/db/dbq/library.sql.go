@@ -165,6 +165,33 @@ func (q *Queries) ListAllAvailableLibraryFiles(ctx context.Context) ([]ListAllAv
 	return items, nil
 }
 
+const listAvailableLibraryFolders = `-- name: ListAvailableLibraryFolders :many
+SELECT folder FROM library_items WHERE status = 'available'
+`
+
+func (q *Queries) ListAvailableLibraryFolders(ctx context.Context) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, listAvailableLibraryFolders)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var folder string
+		if err := rows.Scan(&folder); err != nil {
+			return nil, err
+		}
+		items = append(items, folder)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listAvailableLibraryItems = `-- name: ListAvailableLibraryItems :many
 SELECT li.id, li.display_title, li.release_name, li.folder, li.total_size, li.protocol, li.indexer, li.import_mode,
        li.retention_days, li.imported_at, li.last_downloaded_at, li.download_count,

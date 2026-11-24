@@ -10,6 +10,8 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -17,6 +19,7 @@ import (
 	"github.com/digitalbile/softwarr/internal/db/dbq"
 	"github.com/digitalbile/softwarr/internal/downloadclient"
 	"github.com/digitalbile/softwarr/internal/events"
+	"github.com/digitalbile/softwarr/internal/fsutil"
 	"github.com/digitalbile/softwarr/internal/importer"
 	"github.com/digitalbile/softwarr/internal/library"
 	"github.com/digitalbile/softwarr/internal/notify"
@@ -28,6 +31,7 @@ import (
 
 const (
 	fetchTimeout   = 60 * time.Second
+	recordTimeout  = 30 * time.Second
 	maxTorrentSize = 10 << 20
 	maxRedirects   = 10
 )
@@ -362,19 +366,34 @@ func (w *Worker) importDownload(ctx context.Context, row dbq.Request) error {
 		return err
 	}
 	base := pathmap.Map(ms, c.Host(), it.SavePath)
-	res, err := importer.Import(ctx, importer.Source{BaseDir: base, Files: it.Files, Protocol: rel.Protocol}, root, rel.Title)
+	folder, err := w.importFolder(ctx, row, rel, root)
+	if errors.Is(err, ErrConflict) {
+		return nil // abandoned meanwhile
+	}
 	if err != nil {
+		return w.fail(ctx, row.ID, ActImportFailed, fmt.Sprintf("The library folder for this import couldn't be created: %v", err))
+	}
+	res, err := importer.ImportInto(ctx, importer.Source{BaseDir: base, Files: it.Files, Protocol: rel.Protocol}, folder)
+	if err != nil {
+		// The importer removed the folder, or kept it on purpose because it
+		// holds moved files. Either way a later attempt must not reuse it.
+		w.setImportFolder(context.WithoutCancel(ctx), row.ID, sql.NullString{})
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
 		return w.fail(ctx, row.ID, ActImportFailed, fmt.Sprintf("Importing from %s failed: %v", base, err))
 	}
 
-	req, itemID, err := w.record(ctx, row, rel, res)
+	// Record even when shutting down: the files are in place, and an
+	// unrecorded import has to be redone on the next start.
+	rctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), recordTimeout)
+	defer cancel()
+	req, itemID, err := w.record(rctx, row, rel, res)
 	if err != nil {
-		// The files are in the library but nothing points at them. Leave them
-		// for an admin rather than guess.
-		slog.Error("imported files were not recorded and are left in place", "request", row.ID, "folder", res.Folder, "err", err)
+		// The files are in the library but nothing points at them. The
+		// request is still importing, and the next attempt redoes the import
+		// in the same folder.
+		slog.Error("imported files were not recorded; the import will be redone", "request", row.ID, "folder", res.Folder, "err", err)
 		return skipChanged(err)
 	}
 	w.svc.publish(req)
@@ -386,6 +405,81 @@ func (w *Worker) importDownload(ctx context.Context, row dbq.Request) error {
 	})
 	w.svc.b.Publish(events.Message{Type: events.TypeLibraryUpdated, Data: map[string]any{"id": itemID}, All: true})
 	return nil
+}
+
+// importFolder returns the folder to import row into and saves it on the
+// request before any file is placed. A request that already claimed a folder,
+// in an attempt whose files were placed but never recorded, gets that folder
+// back emptied, so a retry never makes a numbered copy. Otherwise a new folder
+// is claimed.
+func (w *Worker) importFolder(ctx context.Context, row dbq.Request, rel prowlarr.Release, root string) (string, error) {
+	absRoot, err := filepath.Abs(root)
+	if err != nil {
+		return "", err
+	}
+	folder := ""
+	if row.ImportFolder.Valid && row.ImportFolder.String != "" {
+		prev := filepath.Join(absRoot, filepath.Base(row.ImportFolder.String))
+		ok, err := w.reusable(ctx, absRoot, prev, rel)
+		if err != nil {
+			return "", err
+		}
+		if ok {
+			if err := os.RemoveAll(prev); err != nil {
+				return "", err
+			}
+			if err := os.Mkdir(prev, 0o755); err == nil {
+				folder = prev
+			}
+		}
+	}
+	if folder == "" {
+		if folder, err = importer.ClaimFolder(absRoot, rel.Title); err != nil {
+			return "", err
+		}
+	}
+	n, err := w.q.SetRequestImportFolder(ctx, dbq.SetRequestImportFolderParams{
+		ImportFolder: sql.NullString{String: folder, Valid: true}, ID: row.ID,
+	})
+	if err == nil && n == 0 {
+		err = ErrConflict
+	}
+	if err != nil {
+		os.Remove(folder) // still empty
+		return "", err
+	}
+	return folder, nil
+}
+
+// reusable reports whether an earlier attempt's folder can be emptied and
+// imported into again. It must be a plain folder directly in the root that no
+// library item uses. Moved (Usenet) files may be the only copy, so their
+// folder is never emptied.
+func (w *Worker) reusable(ctx context.Context, root, folder string, rel prowlarr.Release) (bool, error) {
+	if rel.Protocol == "usenet" || filepath.Dir(folder) != root || !fsutil.Within(root, folder) {
+		return false, nil
+	}
+	if fi, err := os.Lstat(folder); err == nil && !fi.IsDir() {
+		return false, nil // a file or a symlink
+	} else if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return false, err
+	}
+	used, err := w.q.ListAvailableLibraryFolders(ctx)
+	if err != nil {
+		return false, err
+	}
+	for _, f := range used {
+		if filepath.Join(root, filepath.Base(f)) == folder {
+			return false, nil
+		}
+	}
+	return true, nil
+}
+
+func (w *Worker) setImportFolder(ctx context.Context, id int64, folder sql.NullString) {
+	if _, err := w.q.SetRequestImportFolder(ctx, dbq.SetRequestImportFolderParams{ImportFolder: folder, ID: id}); err != nil {
+		slog.Error("save import folder", "request", id, "err", err)
+	}
 }
 
 // record creates the library item and marks the request available in one

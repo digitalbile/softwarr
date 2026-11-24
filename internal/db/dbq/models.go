@@ -88,6 +88,7 @@ type Request struct {
 	LibraryItemID   sql.NullInt64  `json:"library_item_id"`
 	CreatedAt       int64          `json:"created_at"`
 	UpdatedAt       int64          `json:"updated_at"`
+	ImportFolder    sql.NullString `json:"import_folder"`
 }
 
 type Session struct {

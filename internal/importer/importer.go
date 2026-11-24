@@ -156,37 +156,61 @@ func createFolder(libraryRoot, name string) (string, error) {
 	}
 }
 
-func Import(ctx context.Context, src Source, libraryRoot, releaseName string) (res Result, err error) {
+// ClaimFolder creates a new folder for releaseName directly in libraryRoot,
+// adding " (2)", " (3)", ... if the name is taken, and returns its absolute
+// path.
+func ClaimFolder(libraryRoot, releaseName string) (string, error) {
+	root, err := filepath.Abs(libraryRoot)
+	if err != nil {
+		return "", err
+	}
+	return createFolder(root, SanitizeName(releaseName))
+}
+
+// Import claims a folder for releaseName in libraryRoot and imports into it.
+func Import(ctx context.Context, src Source, libraryRoot, releaseName string) (Result, error) {
+	if err := check(ctx, src); err != nil {
+		return Result{}, err
+	}
+	folder, err := ClaimFolder(libraryRoot, releaseName)
+	if err != nil {
+		return Result{}, err
+	}
+	return ImportInto(ctx, src, folder)
+}
+
+// check validates src before a folder is claimed for it.
+func check(ctx context.Context, src Source) error {
+	_, _, err := prepare(src)
+	if err != nil {
+		return err
+	}
+	return ctx.Err()
+}
+
+func prepare(src Source) ([]plan, []string, error) {
 	if len(src.Files) == 0 {
-		return Result{}, errors.New("importer: no files to import")
+		return nil, nil, errors.New("importer: no files to import")
 	}
 	plans, err := buildPlans(src)
 	if err != nil {
-		return Result{}, err
+		return nil, nil, err
 	}
 	base := filepath.Clean(src.BaseDir)
 	sources := make([]string, len(plans))
 	for i, p := range plans {
 		if sources[i], err = checkSource(base, p.rel); err != nil {
-			return Result{}, err
+			return nil, nil, err
 		}
 	}
-	if err := ctx.Err(); err != nil {
-		return Result{}, err
-	}
+	return plans, sources, nil
+}
 
-	root, err := filepath.Abs(libraryRoot)
-	if err != nil {
-		return Result{}, err
-	}
-	folder, err := createFolder(root, SanitizeName(releaseName))
-	if err != nil {
-		return Result{}, err
-	}
-	mode := ModeHardlink
-	if src.Protocol == "usenet" {
-		mode = ModeMove
-	}
+// ImportInto places src's files in folder, which the caller claimed with
+// ClaimFolder. Temp files left there by an earlier copy that was killed are
+// removed first. On failure folder is removed, unless it holds moved files
+// that couldn't be put back.
+func ImportInto(ctx context.Context, src Source, folder string) (res Result, err error) {
 	type moved struct{ from, to string }
 	var movedFiles []moved
 	defer func() {
@@ -202,8 +226,22 @@ func Import(ctx context.Context, src Source, libraryRoot, releaseName string) (r
 				return
 			}
 		}
-		os.RemoveAll(folder) // only the folder this call created
+		os.RemoveAll(folder) // only the folder this import owns
 	}()
+	plans, sources, err := prepare(src)
+	if err != nil {
+		return Result{}, err
+	}
+	if err = ctx.Err(); err != nil {
+		return Result{}, err
+	}
+	if err = removeTempFiles(folder); err != nil {
+		return Result{}, err
+	}
+	mode := ModeHardlink
+	if src.Protocol == "usenet" {
+		mode = ModeMove
+	}
 	result := Result{Folder: folder}
 	for i, p := range plans {
 		if err = ctx.Err(); err != nil {
@@ -245,6 +283,22 @@ func Import(ctx context.Context, src Source, libraryRoot, releaseName string) (r
 	return result, nil
 }
 
+// removeTempFiles deletes the temp files copyFile leaves when it is killed
+// part way, anywhere under folder.
+func removeTempFiles(folder string) error {
+	return filepath.WalkDir(folder, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if !d.IsDir() && strings.HasPrefix(d.Name(), tempPrefix) {
+			return os.Remove(p)
+		}
+		return nil
+	})
+}
+
+const tempPrefix = ".softwarr-tmp-"
+
 // copyFile copies src to dst via a temp file in dst's directory, so a partial
 // copy never has the final name. Mode bits are preserved, ownership is not.
 // It checks ctx between reads, so cancelling stops a large copy promptly.
@@ -258,7 +312,7 @@ func copyFile(ctx context.Context, srcPath, dst string) (err error) {
 	if err != nil {
 		return err
 	}
-	tmp, err := os.CreateTemp(filepath.Dir(dst), ".softwarr-tmp-*")
+	tmp, err := os.CreateTemp(filepath.Dir(dst), tempPrefix+"*")
 	if err != nil {
 		return err
 	}
