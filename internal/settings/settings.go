@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
@@ -98,6 +99,7 @@ func (s *Store) Get(ctx context.Context) (Settings, error) {
 func (s *Store) Save(ctx context.Context, in Settings) error {
 	in = in.clone()
 	in.ExternalURL = strings.TrimRight(strings.TrimSpace(in.ExternalURL), "/")
+	in.LibraryRoot = CleanLibraryRoot(in.LibraryRoot)
 	if err := validate(in); err != nil {
 		return err
 	}
@@ -116,6 +118,17 @@ func (s *Store) Save(ctx context.Context, in Settings) error {
 	}
 	s.cached = &in
 	return nil
+}
+
+// CleanLibraryRoot trims spaces and cleans a library root path. Empty stays
+// empty, meaning no library folder is set. Every reader of the root sees it
+// in this form, because Save and load both apply it.
+func CleanLibraryRoot(p string) string {
+	p = strings.TrimSpace(p)
+	if p == "" {
+		return ""
+	}
+	return filepath.Clean(p)
 }
 
 // inputError is a validation failure that is safe to show to the user.
@@ -165,6 +178,7 @@ func (s *Store) load(ctx context.Context) error {
 			return err
 		}
 	}
+	cur.LibraryRoot = CleanLibraryRoot(cur.LibraryRoot)
 	if cur.APIKey == "" {
 		key, err := newAPIKey()
 		if err != nil {

@@ -207,7 +207,7 @@ func (s *Service) Delete(ctx context.Context, id int64) error {
 	if err != nil {
 		return err
 	}
-	if err := s.removeFolder(ctx, it.Folder); err != nil {
+	if err := s.removeFolder(ctx, it); err != nil {
 		return err
 	}
 	n, err := s.q.SetLibraryItemStatus(ctx, dbq.SetLibraryItemStatusParams{Status: "deleted", ID: id})
@@ -225,15 +225,28 @@ func (s *Service) publish(id int64) {
 	s.b.Publish(events.Message{Type: events.TypeLibraryUpdated, Data: map[string]any{"id": id}, All: true})
 }
 
-// checkFolder verifies folder is inside the library root, and not the root.
-func (s *Service) checkFolder(ctx context.Context, folder string) error {
+// itemFolder returns the current library root and where the item's folder is
+// in it. The importer always creates root/<name>, so the folder is found by
+// its name in the current root: an admin can move the root along with its
+// contents and change the setting.
+func (s *Service) itemFolder(ctx context.Context, it Item) (root, folder string, err error) {
 	set, err := s.set.Get(ctx)
 	if err != nil {
-		return err
+		return "", "", err
 	}
-	return folderInRoot(set.LibraryRoot, folder)
+	root = set.LibraryRoot
+	name := filepath.Base(it.Folder)
+	if it.Folder == "" || name == "." || name == ".." || name == string(filepath.Separator) {
+		return "", "", fmt.Errorf("%w: %q", ErrUnsafePath, it.Folder)
+	}
+	folder = filepath.Join(root, name)
+	if err := folderInRoot(root, folder); err != nil {
+		return "", "", err
+	}
+	return root, folder, nil
 }
 
+// folderInRoot verifies folder is a direct child of root and not a symlink.
 func folderInRoot(root, folder string) error {
 	if root == "" || folder == "" {
 		return fmt.Errorf("%w: %q", ErrUnsafePath, folder)
@@ -257,8 +270,9 @@ func folderInRoot(root, folder string) error {
 // removeFolder deletes an item's library folder. A folder that isn't there is
 // an error, not a success: os.RemoveAll would report nothing wrong, and the
 // item would be marked gone while an unmounted volume still holds its files.
-func (s *Service) removeFolder(ctx context.Context, folder string) error {
-	if err := s.checkFolder(ctx, folder); err != nil {
+func (s *Service) removeFolder(ctx context.Context, it Item) error {
+	_, folder, err := s.itemFolder(ctx, it)
+	if err != nil {
 		return err
 	}
 	if _, err := os.Lstat(folder); errors.Is(err, os.ErrNotExist) {
@@ -266,7 +280,25 @@ func (s *Service) removeFolder(ctx context.Context, folder string) error {
 	} else if err != nil {
 		return err
 	}
+	// After the root moves, a folder of the same name could be something
+	// else. Only remove it if it still holds one of the item's files.
+	if folder != filepath.Clean(it.Folder) && !holdsAnyFile(folder, it.Files) {
+		return fmt.Errorf("%w: %q doesn't hold this item's files", ErrUnsafePath, folder)
+	}
 	return os.RemoveAll(folder)
+}
+
+func holdsAnyFile(folder string, files []File) bool {
+	for _, f := range files {
+		p := filepath.Join(folder, filepath.FromSlash(f.Path))
+		if !fsutil.Within(folder, p) {
+			continue
+		}
+		if fi, err := os.Lstat(p); err == nil && fi.Mode().IsRegular() {
+			return true
+		}
+	}
+	return false
 }
 
 // ApplyRetention expires items past their retention and returns how many.
@@ -281,7 +313,7 @@ func (s *Service) ApplyRetention(ctx context.Context) (int, error) {
 		if it.ExpiresAt == nil || !now.After(*it.ExpiresAt) {
 			continue
 		}
-		if err := s.removeFolder(ctx, it.Folder); err != nil {
+		if err := s.removeFolder(ctx, it); err != nil {
 			slog.Error("library: expire item", "id", it.ID, "err", err)
 			continue
 		}
