@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
+	"log/slog"
 	"time"
 
 	"github.com/digitalbile/softwarr/internal/db/dbq"
@@ -89,4 +90,27 @@ func (s *Sessions) Delete(ctx context.Context, token string) error {
 
 func (s *Sessions) DeleteForUser(ctx context.Context, userID int64) error {
 	return s.q.DeleteSessionsForUser(ctx, userID)
+}
+
+// DeleteExpired removes sessions past their expiry. Lookup already refuses
+// them; this keeps the table from growing.
+func (s *Sessions) DeleteExpired(ctx context.Context) error {
+	return s.q.DeleteExpiredSessions(ctx, s.now().Unix())
+}
+
+// RunPurge deletes expired sessions now and then every interval until ctx is
+// done.
+func (s *Sessions) RunPurge(ctx context.Context, every time.Duration) {
+	t := time.NewTicker(every)
+	defer t.Stop()
+	for {
+		if err := s.DeleteExpired(ctx); err != nil && ctx.Err() == nil {
+			slog.Error("delete expired sessions", "err", err)
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+		}
+	}
 }
