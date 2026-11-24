@@ -190,29 +190,38 @@ func (w *Worker) reattach(ctx context.Context, row dbq.Request) (bool, error) {
 }
 
 // resolve works out what to hand the download client: the torrent file or
-// magnet behind DownloadURL (which may itself be a magnet), falling back to
-// MagnetURL.
+// magnet behind DownloadURL, falling back to MagnetURL. Either may be a
+// magnet link itself or an http(s) link to fetch; Prowlarr usually proxies
+// the magnet link through itself.
 func (w *Worker) resolve(ctx context.Context, rel prowlarr.Release) (downloadclient.AddRequest, error) {
-	if isMagnet(rel.DownloadURL) {
-		return magnet(rel.DownloadURL)
-	}
 	if rel.DownloadURL != "" {
-		add, err := w.fetch(ctx, rel.DownloadURL)
+		add, err := w.link(ctx, rel.DownloadURL)
 		if err == nil || rel.MagnetURL == "" {
 			return add, err
 		}
 		slog.Warn("using the magnet link after the download link failed", "title", rel.Title, "err", err)
 	}
 	if rel.MagnetURL != "" {
-		return magnet(rel.MagnetURL)
+		return w.link(ctx, rel.MagnetURL)
 	}
 	return downloadclient.AddRequest{}, errors.New("This release has no download link.")
+}
+
+// link resolves one release link: a magnet is parsed, anything else fetched.
+func (w *Worker) link(ctx context.Context, raw string) (downloadclient.AddRequest, error) {
+	if isMagnet(raw) {
+		return magnet(raw)
+	}
+	return w.fetch(ctx, raw)
 }
 
 // fetch downloads a torrent from an indexer. Error text never includes the
 // URL's query string, which often carries an API key.
 func (w *Worker) fetch(ctx context.Context, raw string) (downloadclient.AddRequest, error) {
 	shown := redactURL(raw)
+	if u, err := url.Parse(raw); err != nil || (!strings.EqualFold(u.Scheme, "http") && !strings.EqualFold(u.Scheme, "https")) {
+		return downloadclient.AddRequest{}, fmt.Errorf("The download link %s isn't valid.", shown)
+	}
 	ctx, cancel := context.WithTimeout(ctx, fetchTimeout)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, raw, nil)

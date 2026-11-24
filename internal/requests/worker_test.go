@@ -242,6 +242,59 @@ func TestWorkerGrabFallsBackToMagnet(t *testing.T) {
 	assert.Equal(t, testMagnet, we.fc.adds[0].MagnetURI)
 }
 
+func TestWorkerGrabMagnetURLThatIsHTTP(t *testing.T) {
+	body, hash := sampleTorrent(t)
+	srv := indexer(t, body, nil)
+	cases := map[string]struct {
+		rel        prowlarr.Release
+		torrent    bool
+		magnetHash string
+	}{
+		// Prowlarr usually proxies the magnet link through itself.
+		"redirects to a magnet": {rel: prowlarr.Release{MagnetURL: srv.URL + "/magnet?apikey=secret"}, magnetHash: "0123456789abcdef0123456789abcdef01234567"},
+		"serves a torrent file": {rel: prowlarr.Release{MagnetURL: srv.URL + "/torrent?apikey=secret"}, torrent: true},
+		"after the download link fails": {
+			rel:        prowlarr.Release{DownloadURL: srv.URL + "/html", MagnetURL: srv.URL + "/magnet"},
+			magnetHash: "0123456789abcdef0123456789abcdef01234567",
+		},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			we := newWorkerEnv(t)
+			r := c.rel
+			r.GUID, r.Title, r.Protocol = "g", "Thing", "torrent"
+			req := we.approved(t, r)
+
+			require.NoError(t, we.w.Tick(context.Background()))
+
+			we.get(t, req.ID, Downloading)
+			require.Len(t, we.fc.adds, 1)
+			if c.torrent {
+				assert.Equal(t, body, we.fc.adds[0].TorrentFile)
+				assert.Equal(t, hash, we.fc.adds[0].InfoHash)
+			} else {
+				assert.Equal(t, testMagnet, we.fc.adds[0].MagnetURI)
+				assert.Equal(t, c.magnetHash, we.fc.adds[0].InfoHash)
+			}
+		})
+	}
+}
+
+func TestWorkerGrabBadMagnetURLFails(t *testing.T) {
+	srv := indexer(t, nil, nil)
+	for _, link := range []string{srv.URL + "/gone?apikey=secret", "ftp://idx.example/x?apikey=secret", "javascript:alert(1)"} {
+		we := newWorkerEnv(t)
+		req := we.approved(t, prowlarr.Release{GUID: "g", Title: "Thing", Protocol: "torrent", MagnetURL: link})
+
+		require.NoError(t, we.w.Tick(context.Background()))
+
+		got := we.get(t, req.ID, Failed)
+		assert.NotEmpty(t, got.ErrorDetail, link)
+		assert.NotContains(t, got.ErrorDetail, "secret", link)
+		assert.Empty(t, we.fc.adds, link)
+	}
+}
+
 func TestWorkerGrabStaleURLFails(t *testing.T) {
 	we := newWorkerEnv(t)
 	srv := indexer(t, nil, nil)
