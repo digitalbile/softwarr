@@ -24,8 +24,9 @@ var (
 	// ErrUnsafePath is returned when a stored folder or file path resolves
 	// outside the place it must live in. Nothing is read or removed.
 	ErrUnsafePath = errors.New("library: path is outside the library")
-	// ErrFolderMissing means the item's folder isn't on disk, most likely
-	// because the library volume isn't mounted. The item is left as it is.
+	// ErrFolderMissing means the item's folder isn't on disk and neither is
+	// anything else in the library root, most likely because the library
+	// volume isn't mounted. The item is left as it is.
 	ErrFolderMissing = errors.New("The library folder for this item is missing. Check that the library path is mounted.")
 )
 
@@ -267,15 +268,18 @@ func folderInRoot(root, folder string) error {
 	return nil
 }
 
-// removeFolder deletes an item's library folder. A folder that isn't there is
-// an error, not a success: os.RemoveAll would report nothing wrong, and the
-// item would be marked gone while an unmounted volume still holds its files.
+// removeFolder deletes an item's library folder. A missing folder only counts
+// as removed when the library root looks mounted: os.RemoveAll would report
+// nothing wrong either way, and an unmounted volume still holds the files.
 func (s *Service) removeFolder(ctx context.Context, it Item) error {
-	_, folder, err := s.itemFolder(ctx, it)
+	root, folder, err := s.itemFolder(ctx, it)
 	if err != nil {
 		return err
 	}
 	if _, err := os.Lstat(folder); errors.Is(err, os.ErrNotExist) {
+		if rootMounted(root) {
+			return nil // someone removed it by hand; the item can go
+		}
 		return ErrFolderMissing
 	} else if err != nil {
 		return err
@@ -286,6 +290,19 @@ func (s *Service) removeFolder(ctx context.Context, it Item) error {
 		return fmt.Errorf("%w: %q doesn't hold this item's files", ErrUnsafePath, folder)
 	}
 	return os.RemoveAll(folder)
+}
+
+// rootMounted reports whether root is a readable directory with something in
+// it. An empty root counts as unmounted: Docker creates an empty directory for
+// a bind mount whose host path is missing.
+func rootMounted(root string) bool {
+	f, err := os.Open(root)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+	names, err := f.Readdirnames(1)
+	return err == nil && len(names) > 0
 }
 
 func holdsAnyFile(folder string, files []File) bool {

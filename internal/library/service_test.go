@@ -266,26 +266,66 @@ func TestDeleteRemovesFolderAndMarksDeleted(t *testing.T) {
 	assert.ErrorIs(t, err, ErrNotFound)
 }
 
-func TestDeleteAndRetentionKeepItemWhenFolderMissing(t *testing.T) {
+func itemStatus(t *testing.T, e *env, id int64) string {
+	t.Helper()
+	var status string
+	require.NoError(t, e.db.QueryRow("SELECT status FROM library_items WHERE id = ?", id).Scan(&status))
+	return status
+}
+
+func TestDeleteAndRetentionKeepItemWhenRootMissing(t *testing.T) {
+	for name, unmount := range map[string]func(t *testing.T, e *env){
+		// As if the library volume weren't mounted.
+		"root gone": func(t *testing.T, e *env) { require.NoError(t, os.RemoveAll(e.root)) },
+		// An empty mount point, which is what Docker leaves for a missing bind.
+		"root empty": func(t *testing.T, e *env) { require.NoError(t, os.RemoveAll(filepath.Join(e.root, "Item"))) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			e := newEnv(t)
+			ctx := context.Background()
+			setDefaultDays(t, e, 1)
+			id := e.addItem(t, "Item", map[string]string{"a.txt": "a"})
+			unmount(t, e)
+
+			err := e.svc.Delete(ctx, id)
+			require.ErrorIs(t, err, ErrFolderMissing)
+			assert.Equal(t, "The library folder for this item is missing. Check that the library path is mounted.", err.Error())
+
+			*e.clock = e.now.Add(48 * time.Hour)
+			n, err := e.svc.ApplyRetention(ctx)
+			require.NoError(t, err)
+			assert.Zero(t, n)
+			assert.Equal(t, "available", itemStatus(t, e, id))
+		})
+	}
+}
+
+func TestDeleteRemovesItemWhoseFolderIsGone(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	id := e.addItem(t, "Item", map[string]string{"a.txt": "a"})
+	e.addItem(t, "Other", map[string]string{"b.txt": "b"})
+	require.NoError(t, os.RemoveAll(filepath.Join(e.root, "Item")))
+
+	require.NoError(t, e.svc.Delete(ctx, id))
+	assert.Equal(t, "deleted", itemStatus(t, e, id))
+	assert.DirExists(t, filepath.Join(e.root, "Other"))
+}
+
+func TestRetentionExpiresItemWhoseFolderIsGone(t *testing.T) {
 	e := newEnv(t)
 	ctx := context.Background()
 	setDefaultDays(t, e, 1)
 	id := e.addItem(t, "Item", map[string]string{"a.txt": "a"})
-	// As if the library volume weren't mounted.
 	require.NoError(t, os.RemoveAll(filepath.Join(e.root, "Item")))
-
-	err := e.svc.Delete(ctx, id)
-	require.ErrorIs(t, err, ErrFolderMissing)
-	assert.Equal(t, "The library folder for this item is missing. Check that the library path is mounted.", err.Error())
+	// Something else in the root shows the volume is there.
+	require.NoError(t, os.WriteFile(filepath.Join(e.root, "notes.txt"), []byte("x"), 0o644))
 
 	*e.clock = e.now.Add(48 * time.Hour)
 	n, err := e.svc.ApplyRetention(ctx)
 	require.NoError(t, err)
-	assert.Zero(t, n)
-
-	var status string
-	require.NoError(t, e.db.QueryRow("SELECT status FROM library_items WHERE id = ?", id).Scan(&status))
-	assert.Equal(t, "available", status)
+	assert.Equal(t, 1, n)
+	assert.Equal(t, "expired", itemStatus(t, e, id))
 }
 
 func TestUpdateTitleAndRetention(t *testing.T) {
