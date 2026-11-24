@@ -15,6 +15,9 @@ These came from the code review of the phase-1 branch.
 - A request with a wrong API key and no CSRF header gets a CSRF error. "Invalid API key" with a 401 would be clearer.
 - `redactURL` keeps the URL path. A tracker that puts its passkey in the path, not the query string, could still show it in a request's error text.
 - If an install already has an admin claim name saved with an empty value, it can't save settings until that pair is fixed. The error message explains what to change.
+- If an admin resets a user's password while that user is signed in, the user's live updates keep retrying every 30 seconds. The user only reaches the change-password page on their next ordinary request. The reconnect check could call `refresh()` when `/auth/me` reports `mustChangePassword`.
+- The `.softwarr-item` marker holds only a request ID. Say a seeding folder came from a torrent of someone else's softwarr library, and the library folder were later pointed at the downloads folder. A marker in that seeding folder could then match a small request ID. A per-install UUID in both markers would close this.
+- Settings writes the library folder's `.softwarr-library` marker before it validates the rest of the save. A save that fails later, for example on an OIDC setting, has already created and marked the new folder.
 
 ## Not yet tested against live services
 
