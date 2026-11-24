@@ -5,6 +5,7 @@ package importer
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -156,23 +157,79 @@ func createFolder(libraryRoot, name string) (string, error) {
 	}
 }
 
+// ItemMarker is the file softwarr keeps in each library folder it creates.
+// It names the request the folder belongs to, so softwarr only empties or
+// removes a folder it can show is its own. SanitizeName trims leading dots, so
+// no imported file can take this name.
+const ItemMarker = ".softwarr-item"
+
+type itemMarker struct {
+	RequestID int64 `json:"requestId"`
+}
+
+// MarkItemFolder writes the item marker for requestID into folder.
+func MarkItemFolder(folder string, requestID int64) error {
+	b, err := json.Marshal(itemMarker{RequestID: requestID})
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(folder, ItemMarker), b, 0o644)
+}
+
+// FolderMarkedFor reports whether folder holds an item marker, as a regular
+// file, naming requestID.
+func FolderMarkedFor(folder string, requestID int64) bool {
+	p := filepath.Join(folder, ItemMarker)
+	if fi, err := os.Lstat(p); err != nil || !fi.Mode().IsRegular() {
+		return false
+	}
+	b, err := os.ReadFile(p)
+	if err != nil {
+		return false
+	}
+	var m itemMarker
+	return json.Unmarshal(b, &m) == nil && m.RequestID == requestID
+}
+
 // ClaimFolder creates a new folder for releaseName directly in libraryRoot,
-// adding " (2)", " (3)", ... if the name is taken, and returns its absolute
-// path.
-func ClaimFolder(libraryRoot, releaseName string) (string, error) {
+// adding " (2)", " (3)", ... if the name is taken, marks it for requestID,
+// and returns its absolute path.
+func ClaimFolder(libraryRoot, releaseName string, requestID int64) (string, error) {
 	root, err := filepath.Abs(libraryRoot)
 	if err != nil {
 		return "", err
 	}
-	return createFolder(root, SanitizeName(releaseName))
+	folder, err := createFolder(root, SanitizeName(releaseName))
+	if err != nil {
+		return "", err
+	}
+	if err := MarkItemFolder(folder, requestID); err != nil {
+		os.RemoveAll(folder)
+		return "", err
+	}
+	return folder, nil
+}
+
+// ClaimFolderAt creates folder, which must not exist yet, and marks it for
+// requestID.
+func ClaimFolderAt(folder string, requestID int64) error {
+	if err := os.Mkdir(folder, 0o755); err != nil {
+		return err
+	}
+	if err := MarkItemFolder(folder, requestID); err != nil {
+		os.RemoveAll(folder)
+		return err
+	}
+	return nil
 }
 
 // Import claims a folder for releaseName in libraryRoot and imports into it.
+// The folder is marked with request id 0.
 func Import(ctx context.Context, src Source, libraryRoot, releaseName string) (Result, error) {
 	if err := check(ctx, src); err != nil {
 		return Result{}, err
 	}
-	folder, err := ClaimFolder(libraryRoot, releaseName)
+	folder, err := ClaimFolder(libraryRoot, releaseName, 0)
 	if err != nil {
 		return Result{}, err
 	}
