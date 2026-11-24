@@ -48,6 +48,9 @@ var link = os.Link
 // rename is replaced in tests.
 var rename = os.Rename
 
+// copySource wraps the file being copied; tests replace it to slow a copy.
+var copySource = func(r io.Reader) io.Reader { return r }
+
 type plan struct {
 	rel  []string // source segments
 	dest []string // sanitized destination segments (common root stripped)
@@ -222,10 +225,10 @@ func Import(ctx context.Context, src Source, libraryRoot, releaseName string) (r
 			err = link(sources[i], dst)
 			if err != nil && isCrossDevice(err) {
 				mode = ModeCopy
-				err = copyFile(sources[i], dst)
+				err = copyFile(ctx, sources[i], dst)
 			}
 		default:
-			err = copyFile(sources[i], dst)
+			err = copyFile(ctx, sources[i], dst)
 		}
 		if err != nil {
 			return Result{}, err
@@ -244,7 +247,8 @@ func Import(ctx context.Context, src Source, libraryRoot, releaseName string) (r
 
 // copyFile copies src to dst via a temp file in dst's directory, so a partial
 // copy never has the final name. Mode bits are preserved, ownership is not.
-func copyFile(srcPath, dst string) (err error) {
+// It checks ctx between reads, so cancelling stops a large copy promptly.
+func copyFile(ctx context.Context, srcPath, dst string) (err error) {
 	in, err := os.Open(srcPath)
 	if err != nil {
 		return err
@@ -264,7 +268,7 @@ func copyFile(srcPath, dst string) (err error) {
 			os.Remove(tmp.Name())
 		}
 	}()
-	if _, err = io.Copy(tmp, in); err != nil {
+	if _, err = io.Copy(tmp, fsutil.ContextReader(ctx, copySource(in))); err != nil {
 		return err
 	}
 	if err = tmp.Chmod(fi.Mode().Perm()); err != nil {

@@ -1,11 +1,31 @@
-// Package fsutil holds small filesystem path helpers shared by the importer
-// and the library.
+// Package fsutil holds small filesystem helpers shared by the importer and
+// the library.
 package fsutil
 
 import (
+	"context"
+	"io"
 	"path/filepath"
 	"strings"
 )
+
+// ContextReader returns a reader that fails with ctx's error once ctx is
+// done, so a long copy stops between reads.
+func ContextReader(ctx context.Context, r io.Reader) io.Reader {
+	return &ctxReader{ctx: ctx, r: r}
+}
+
+type ctxReader struct {
+	ctx context.Context
+	r   io.Reader
+}
+
+func (c *ctxReader) Read(p []byte) (int, error) {
+	if err := c.ctx.Err(); err != nil {
+		return 0, err
+	}
+	return c.r.Read(p)
+}
 
 // Within reports whether target is strictly inside base. base itself is not
 // inside base. Both are compared as cleaned absolute paths.

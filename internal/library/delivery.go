@@ -161,21 +161,8 @@ func addToZip(ctx context.Context, zw *zip.Writer, f resolved, src io.Reader) er
 	if err != nil {
 		return err
 	}
-	_, err = io.Copy(dst, &ctxReader{ctx: ctx, r: src})
+	_, err = io.Copy(dst, fsutil.ContextReader(ctx, src))
 	return err
-}
-
-// ctxReader stops a copy once the request's context is done.
-type ctxReader struct {
-	ctx context.Context
-	r   io.Reader
-}
-
-func (c *ctxReader) Read(p []byte) (int, error) {
-	if err := c.ctx.Err(); err != nil {
-		return 0, err
-	}
-	return c.r.Read(p)
 }
 
 // statusWriter remembers the status code ServeContent chose.
