@@ -55,3 +55,7 @@ WHERE id = ? AND status = 'downloading';
 
 -- name: SetRequestImportFolder :execrows
 UPDATE requests SET import_folder = ? WHERE id = ? AND status = 'importing';
+
+-- name: SetRequestImportWaiting :execrows
+UPDATE requests SET error = ?, error_detail = ?, updated_at = ?
+WHERE id = ? AND status = 'importing';

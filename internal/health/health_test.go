@@ -17,6 +17,7 @@ import (
 	"github.com/digitalbile/softwarr/internal/db/dbq"
 	"github.com/digitalbile/softwarr/internal/downloadclient"
 	"github.com/digitalbile/softwarr/internal/events"
+	"github.com/digitalbile/softwarr/internal/importer"
 	"github.com/digitalbile/softwarr/internal/notify"
 	"github.com/digitalbile/softwarr/internal/prowlarr"
 	"github.com/digitalbile/softwarr/internal/settings"
@@ -49,6 +50,7 @@ func newEnv(t *testing.T) *env {
 	t.Helper()
 	_, q := testutil.NewDB(t)
 	e := &env{q: q, st: settings.NewStore(q), broker: events.NewBroker(), root: t.TempDir(), prowOK: true}
+	require.NoError(t, importer.PrepareRoot(e.root))
 	prow := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !e.prowOK {
 			http.Error(w, "boom", http.StatusInternalServerError)
@@ -124,6 +126,14 @@ func TestHealthLibraryMissing(t *testing.T) {
 	m := byID(e.c.Run(context.Background()))
 	assert.Equal(t, "error", m["library"].Level)
 	assert.Equal(t, "The library folder "+s.LibraryRoot+" doesn't exist or isn't writable.", m["library"].Message)
+}
+
+func TestHealthLibraryMarkerMissing(t *testing.T) {
+	e := newEnv(t)
+	require.NoError(t, os.Remove(filepath.Join(e.root, importer.RootMarker)))
+	m := byID(e.c.Run(context.Background()))
+	assert.Equal(t, "warning", m["library"].Level)
+	assert.Equal(t, "The library folder "+e.root+" has no .softwarr-library file, so softwarr treats it as not mounted: imports wait and items can't be removed. If the folder is mounted, create an empty file named .softwarr-library in it.", m["library"].Message)
 }
 
 func TestHealthPathMapping(t *testing.T) {

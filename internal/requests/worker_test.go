@@ -83,6 +83,7 @@ func newWorkerEnv(t *testing.T) workerEnv {
 	t.Helper()
 	e := newEnv(t)
 	lib := t.TempDir()
+	require.NoError(t, importer.PrepareRoot(lib))
 	e.setSettings(t, func(s *settings.Settings) { s.LibraryRoot = lib })
 	fc := &fakeClient{host: "qbit.lan"}
 	now := fixedNow
@@ -363,7 +364,7 @@ func completedItem(t *testing.T, dir, savePath string) downloadclient.Item {
 	}
 }
 
-func (we workerEnv) assertImported(t *testing.T, id int64) {
+func (we workerEnv) assertImported(t *testing.T, id int64) Request {
 	t.Helper()
 	got := we.get(t, id, Available)
 	require.NotNil(t, got.LibraryItemID)
@@ -381,6 +382,7 @@ func (we workerEnv) assertImported(t *testing.T, id int64) {
 	b, err := os.ReadFile(filepath.Join(folder, "setup.dmg"))
 	require.NoError(t, err)
 	assert.Equal(t, "binary", string(b))
+	return got
 }
 
 func TestWorkerCompletesAndImports(t *testing.T) {
@@ -425,10 +427,7 @@ func TestWorkerImportRedoesAfterRecordFails(t *testing.T) {
 	require.NoError(t, we.w.Tick(context.Background()))
 	we.assertImported(t, req.ID)
 
-	ents, err := os.ReadDir(we.library)
-	require.NoError(t, err)
-	require.Len(t, ents, 1, "one folder for the request, not a numbered second one")
-	assert.Equal(t, "a", ents[0].Name())
+	assert.Equal(t, []string{"a"}, subdirs(t, we.library), "one folder for the request, not a numbered second one")
 	files, err := os.ReadDir(filepath.Join(we.library, "a"))
 	require.NoError(t, err)
 	assert.Len(t, files, 3, "two files and the item marker, no temp file")
@@ -460,6 +459,20 @@ func TestWorkerImportLeavesAnotherItemsFolderAlone(t *testing.T) {
 	assert.DirExists(t, filepath.Join(we.library, "a (2)"))
 }
 
+// subdirs lists the folders in dir.
+func subdirs(t *testing.T, dir string) []string {
+	t.Helper()
+	ents, err := os.ReadDir(dir)
+	require.NoError(t, err)
+	var out []string
+	for _, e := range ents {
+		if e.IsDir() {
+			out = append(out, e.Name())
+		}
+	}
+	return out
+}
+
 // importingAfterRootMove leaves a request importing with an import folder in
 // an old library root, then points the library at a new root.
 func importingAfterRootMove(t *testing.T, we workerEnv) (Request, string) {
@@ -472,8 +485,39 @@ func importingAfterRootMove(t *testing.T, we workerEnv) (Request, string) {
 	_, err := we.svc.db.Exec(`UPDATE requests SET import_folder = ? WHERE id = ?`, filepath.Join(t.TempDir(), "a"), req.ID)
 	require.NoError(t, err)
 	newRoot := t.TempDir()
+	require.NoError(t, importer.PrepareRoot(newRoot))
 	we.setSettings(t, func(s *settings.Settings) { s.LibraryRoot = newRoot })
 	return req, newRoot
+}
+
+func TestWorkerImportWaitsForUnmountedRoot(t *testing.T) {
+	we := newWorkerEnv(t)
+	req := we.downloading(t, "a")
+	dl := t.TempDir()
+	we.fc.setItem(completedItem(t, dl, dl))
+	require.NoError(t, we.w.Tick(context.Background()))
+	we.get(t, req.ID, Importing)
+	// As if the volume went away and left a bare mount point.
+	require.NoError(t, os.Remove(filepath.Join(we.library, importer.RootMarker)))
+
+	require.NoError(t, we.w.Tick(context.Background()))
+	require.NoError(t, we.w.Tick(context.Background()))
+	got := we.get(t, req.ID, Importing)
+	assert.Equal(t, "Waiting for the library folder. An admin has the details.", got.Error)
+	assert.Contains(t, got.ErrorDetail, "looks unmounted")
+	mine, err := we.svc.Get(context.Background(), we.user, req.ID)
+	require.NoError(t, err)
+	assert.Empty(t, mine.ErrorDetail)
+	ents, err := os.ReadDir(we.library)
+	require.NoError(t, err)
+	assert.Empty(t, ents, "nothing is imported into the bare mount point")
+	assert.False(t, hasNotification(we.notifications(t, we.user.UserID), notify.EvRequestFailed))
+
+	require.NoError(t, importer.PrepareRoot(we.library))
+	require.NoError(t, we.w.Tick(context.Background()))
+	got = we.assertImported(t, req.ID)
+	assert.Empty(t, got.Error)
+	assert.Empty(t, got.ErrorDetail)
 }
 
 func TestWorkerImportRedoLeavesUnmarkedFolderAfterRootMove(t *testing.T) {
@@ -502,9 +546,7 @@ func TestWorkerImportRedoReusesMarkedFolderAfterRootMove(t *testing.T) {
 
 	require.NoError(t, we.w.Tick(context.Background()))
 	we.get(t, req.ID, Available)
-	ents, err := os.ReadDir(newRoot)
-	require.NoError(t, err)
-	require.Len(t, ents, 1)
+	assert.Equal(t, []string{"a"}, subdirs(t, newRoot))
 	b, err := os.ReadFile(filepath.Join(ours, "setup.dmg"))
 	require.NoError(t, err)
 	assert.Equal(t, "binary", string(b))

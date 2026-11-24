@@ -398,6 +398,31 @@ func (q *Queries) SetRequestImportFolder(ctx context.Context, arg SetRequestImpo
 	return result.RowsAffected()
 }
 
+const setRequestImportWaiting = `-- name: SetRequestImportWaiting :execrows
+UPDATE requests SET error = ?, error_detail = ?, updated_at = ?
+WHERE id = ? AND status = 'importing'
+`
+
+type SetRequestImportWaitingParams struct {
+	Error       string         `json:"error"`
+	ErrorDetail sql.NullString `json:"error_detail"`
+	UpdatedAt   int64          `json:"updated_at"`
+	ID          int64          `json:"id"`
+}
+
+func (q *Queries) SetRequestImportWaiting(ctx context.Context, arg SetRequestImportWaitingParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, setRequestImportWaiting,
+		arg.Error,
+		arg.ErrorDetail,
+		arg.UpdatedAt,
+		arg.ID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const updateRequest = `-- name: UpdateRequest :execrows
 UPDATE requests SET
     status = ?1,

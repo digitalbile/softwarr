@@ -363,6 +363,10 @@ func (w *Worker) importDownload(ctx context.Context, row dbq.Request) error {
 	if root == "" {
 		return w.fail(ctx, row.ID, ActImportFailed, ErrNoLibraryRoot.Error(), "")
 	}
+	if !importer.RootReady(root) {
+		// Likely an unmounted volume: wait for it rather than fail.
+		return w.waitForRoot(ctx, row, root)
+	}
 	c, err := w.clientByID(ctx, row.ClientID.Int64)
 	if errors.Is(err, errClientGone) {
 		return w.fail(ctx, row.ID, ActImportFailed, errClientGone.Error(), "")
@@ -421,6 +425,29 @@ func (w *Worker) importDownload(ctx context.Context, row dbq.Request) error {
 		Payload: map[string]any{"requestId": req.ID, "itemId": itemID, "title": req.DisplayTitle},
 	})
 	w.svc.b.Publish(events.Message{Type: events.TypeLibraryUpdated, Data: map[string]any{"id": itemID}, All: true})
+	return nil
+}
+
+const msgWaitingForLibrary = "Waiting for the library folder. An admin has the details."
+
+// waitForRoot leaves row importing, to be tried again next tick, and says why
+// on the request. It writes only when the message is new.
+func (w *Worker) waitForRoot(ctx context.Context, row dbq.Request, root string) error {
+	detail := fmt.Sprintf("The library folder %s has no %s file, so it looks unmounted. softwarr will import once the file is there.", root, importer.RootMarker)
+	if row.Error == msgWaitingForLibrary && row.ErrorDetail.String == detail {
+		return nil
+	}
+	slog.Warn("library folder looks unmounted; import waits", "request", row.ID, "root", root)
+	n, err := w.q.SetRequestImportWaiting(ctx, dbq.SetRequestImportWaitingParams{
+		Error: msgWaitingForLibrary, ErrorDetail: sql.NullString{String: detail, Valid: true},
+		UpdatedAt: w.now().Unix(), ID: row.ID,
+	})
+	if err != nil || n == 0 {
+		return err
+	}
+	if req, err := w.svc.load(ctx, row.ID); err == nil {
+		w.svc.publish(req)
+	}
 	return nil
 }
 
