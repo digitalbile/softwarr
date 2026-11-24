@@ -13,6 +13,7 @@ import (
 
 	"github.com/digitalbile/softwarr/internal/db/dbq"
 	"github.com/digitalbile/softwarr/internal/events"
+	"github.com/digitalbile/softwarr/internal/fsutil"
 	"github.com/digitalbile/softwarr/internal/notify"
 	"github.com/digitalbile/softwarr/internal/settings"
 )
@@ -237,7 +238,7 @@ func folderInRoot(root, folder string) error {
 	if root == "" || folder == "" {
 		return fmt.Errorf("%w: %q", ErrUnsafePath, folder)
 	}
-	if !within(root, folder) {
+	if !fsutil.Within(root, folder) {
 		return fmt.Errorf("%w: %q", ErrUnsafePath, folder)
 	}
 	// The importer always creates root/<name>, so the folder must be a direct
@@ -251,24 +252,6 @@ func folderInRoot(root, folder string) error {
 		return fmt.Errorf("%w: %q is a symlink", ErrUnsafePath, folder)
 	}
 	return nil
-}
-
-// within reports whether p is strictly inside base, comparing cleaned
-// absolute paths.
-func within(base, p string) bool {
-	b, err := filepath.Abs(base)
-	if err != nil {
-		return false
-	}
-	a, err := filepath.Abs(p)
-	if err != nil {
-		return false
-	}
-	rel, err := filepath.Rel(b, a)
-	if err != nil {
-		return false
-	}
-	return rel != "." && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && !filepath.IsAbs(rel)
 }
 
 // removeFolder deletes an item's library folder. A folder that isn't there is

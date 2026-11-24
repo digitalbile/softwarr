@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/digitalbile/softwarr/internal/auth"
+	"github.com/digitalbile/softwarr/internal/db"
 	"github.com/digitalbile/softwarr/internal/db/dbq"
 	"github.com/digitalbile/softwarr/internal/downloadclient"
 	"github.com/digitalbile/softwarr/internal/events"
@@ -70,10 +71,6 @@ func validateRelease(r prowlarr.Release) error {
 	return nil
 }
 
-func isUniqueViolation(err error) bool {
-	return err != nil && strings.Contains(err.Error(), "UNIQUE constraint failed")
-}
-
 func (s *Service) checkClient(ctx context.Context, protocol string) error {
 	_, ok, err := downloadclient.PickClient(ctx, s.q, protocol)
 	if err != nil {
@@ -131,7 +128,7 @@ func (s *Service) Create(ctx context.Context, p auth.Principal, rel prowlarr.Rel
 		RequesterID: p.UserID, Status: string(status), Release: string(raw), ReleaseKey: key,
 		Comment: comment, DisplayTitle: rel.Title, ApprovedBy: approvedBy, CreatedAt: ts, UpdatedAt: ts,
 	})
-	if isUniqueViolation(err) {
+	if db.IsUniqueViolation(err) {
 		return Request{}, ErrDuplicate
 	}
 	if err != nil {
@@ -353,7 +350,7 @@ func (s *Service) apply(ctx context.Context, q *dbq.Queries, id int64, a Action,
 		mutate(&u)
 	}
 	n, err := q.UpdateRequest(ctx, u)
-	if isUniqueViolation(err) {
+	if db.IsUniqueViolation(err) {
 		return Request{}, ErrDuplicate
 	}
 	if err != nil {
