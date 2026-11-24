@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"testing"
 
+	"github.com/digitalbile/softwarr/internal/db/dbq"
 	"github.com/digitalbile/softwarr/internal/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -171,4 +172,34 @@ func TestAdminClaimAndValueGoTogether(t *testing.T) {
 	require.NoError(t, s.Save(ctx, in))
 	in.OIDC.AdminClaim, in.OIDC.AdminValue = "", ""
 	require.NoError(t, s.Save(ctx, in))
+}
+
+func TestLibraryRootIsNormalized(t *testing.T) {
+	_, q := testutil.NewDB(t)
+	s := NewStore(q)
+	ctx := context.Background()
+	in, err := s.Get(ctx)
+	require.NoError(t, err)
+	in.LibraryRoot = "  /library/apps/ \t"
+	require.NoError(t, s.Save(ctx, in))
+	got, err := s.Get(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, "/library/apps", got.LibraryRoot)
+
+	in.LibraryRoot = "   "
+	require.NoError(t, s.Save(ctx, in))
+	got, err = s.Get(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, "", got.LibraryRoot)
+
+	// A value saved before normalization existed is cleaned on load.
+	raw, err := json.Marshal(map[string]any{"apiKey": "k", "libraryRoot": "/library/ "})
+	require.NoError(t, err)
+	require.NoError(t, q.UpsertSetting(ctx, dbq.UpsertSettingParams{Key: settingsKey, Value: string(raw)}))
+	got, err = NewStore(q).Get(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, "/library", got.LibraryRoot)
+
+	assert.Equal(t, "", CleanLibraryRoot(""))
+	assert.Equal(t, "/a/b", CleanLibraryRoot(" /a//b/ "))
 }

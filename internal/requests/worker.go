@@ -339,7 +339,7 @@ func (w *Worker) importDownload(ctx context.Context, row dbq.Request) error {
 	if err != nil {
 		return err
 	}
-	root := strings.TrimSpace(st.LibraryRoot)
+	root := st.LibraryRoot
 	if root == "" {
 		return w.fail(ctx, row.ID, ActImportFailed, ErrNoLibraryRoot.Error())
 	}

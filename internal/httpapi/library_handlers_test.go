@@ -179,14 +179,44 @@ func TestDownloadMissingFileReturnsGone(t *testing.T) {
 	assert.Equal(t, "Files for this item are missing on disk.", errorBody(t, resp))
 }
 
-func TestDownloadRefusesFolderOutsideRoot(t *testing.T) {
+func TestDownloadAndDeleteRefuseSymlinkedFolder(t *testing.T) {
 	ts := newTestServer(t)
 	ts.loginAsOwner()
-	id, _ := addLibraryItem(t, ts, t.TempDir(), "Item", 0, map[string]string{"a.txt": "a"})
-	_, err := ts.DB.Exec("UPDATE library_items SET folder = ? WHERE id = ?", t.TempDir(), id)
-	require.NoError(t, err)
+	id, folder := addLibraryItem(t, ts, t.TempDir(), "Item", 0, map[string]string{"a.txt": "a"})
+	elsewhere := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(elsewhere, "a.txt"), []byte("a"), 0o644))
+	require.NoError(t, os.RemoveAll(folder))
+	require.NoError(t, os.Symlink(elsewhere, folder))
+
+	const msg = "The folder for this item isn't a plain folder inside the library folder, so softwarr left it alone. Check the library folder in Settings."
 	resp := ts.do("GET", "/api/v1/library/"+itoa(id)+"/download", nil)
-	assert.Equal(t, 500, resp.StatusCode)
+	assert.Equal(t, http.StatusConflict, resp.StatusCode)
+	assert.Equal(t, msg, errorBody(t, resp))
+	resp = ts.do("DELETE", "/api/v1/library/"+itoa(id), nil)
+	assert.Equal(t, http.StatusConflict, resp.StatusCode)
+	assert.Equal(t, msg, errorBody(t, resp))
+	assert.FileExists(t, filepath.Join(elsewhere, "a.txt"))
+}
+
+func TestDownloadFindsFolderAfterRootMoves(t *testing.T) {
+	ts := newTestServer(t)
+	ts.loginAsOwner()
+	root := t.TempDir()
+	id, _ := addLibraryItem(t, ts, root, "Item", 0, map[string]string{"x.dmg": "0123456789"})
+	moved := filepath.Join(t.TempDir(), "moved")
+	require.NoError(t, os.Rename(root, moved))
+	cur, err := ts.Deps.Settings.Get(context.Background())
+	require.NoError(t, err)
+	cur.LibraryRoot = " " + moved + " "
+	require.NoError(t, ts.Deps.Settings.Save(context.Background(), cur))
+
+	resp := ts.do("GET", "/api/v1/library/"+itoa(id)+"/download", nil)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	assert.Equal(t, "0123456789", string(body))
+	assert.Equal(t, http.StatusNoContent, ts.do("DELETE", "/api/v1/library/"+itoa(id), nil).StatusCode)
+	assert.NoDirExists(t, filepath.Join(moved, "Item"))
 }
 
 func TestDownloadUpdatesCountAndTime(t *testing.T) {

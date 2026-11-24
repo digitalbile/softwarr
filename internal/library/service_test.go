@@ -3,6 +3,7 @@ package library
 import (
 	"context"
 	"database/sql"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -188,17 +189,66 @@ func TestDeleteRefusesFolderOutsideRoot(t *testing.T) {
 	require.NoError(t, os.WriteFile(victim, []byte("x"), 0o644))
 	id := e.addItem(t, "Item", map[string]string{"a.txt": "a"})
 
-	for _, folder := range []string{outside, e.root, filepath.Join(e.root, "..", filepath.Base(outside)), ""} {
+	// Only the stored folder's name is used, so these can't reach outside
+	// the root, and names that aren't a child of the root are refused.
+	for _, folder := range []string{"", "/", ".", "..", e.root + "/.."} {
 		_, err := e.db.Exec("UPDATE library_items SET folder = ? WHERE id = ?", folder, id)
 		require.NoError(t, err)
 		err = e.svc.Delete(ctx, id)
 		require.ErrorIs(t, err, ErrUnsafePath, "folder %q", folder)
 	}
+	// A folder elsewhere is looked for in the root by name.
+	require.NoError(t, os.Mkdir(filepath.Join(e.root, filepath.Base(outside)), 0o755))
+	_, err := e.db.Exec("UPDATE library_items SET folder = ? WHERE id = ?", outside, id)
+	require.NoError(t, err)
+	require.ErrorIs(t, e.svc.Delete(ctx, id), ErrUnsafePath, "a folder without the item's files is left alone")
 	assert.FileExists(t, victim)
 	assert.DirExists(t, e.root)
+	assert.DirExists(t, filepath.Join(e.root, "Item"))
 	var status string
 	require.NoError(t, e.db.QueryRow("SELECT status FROM library_items WHERE id = ?", id).Scan(&status))
 	assert.Equal(t, "available", status)
+}
+
+func TestRootMovedWithItsContents(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	id := e.addItem(t, "Item", map[string]string{"setup.dmg": "payload"})
+
+	moved := filepath.Join(t.TempDir(), "newlib")
+	require.NoError(t, os.Rename(e.root, moved))
+	cur, err := e.st.Get(ctx)
+	require.NoError(t, err)
+	cur.LibraryRoot = moved + "/ "
+	require.NoError(t, e.st.Save(ctx, cur))
+
+	it, err := e.svc.Get(ctx, id)
+	require.NoError(t, err)
+	rec := httptest.NewRecorder()
+	require.NoError(t, e.svc.Download(rec, httptest.NewRequest("GET", "/dl", nil), it))
+	assert.Equal(t, "payload", rec.Body.String())
+
+	require.NoError(t, e.svc.Delete(ctx, id))
+	assert.NoDirExists(t, filepath.Join(moved, "Item"))
+	assert.DirExists(t, moved)
+}
+
+func TestRootWithWhitespaceWorks(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	id := e.addItem(t, "Item", map[string]string{"setup.dmg": "payload"})
+	// As stored by a version that didn't normalize the root.
+	raw := `{"libraryRoot": "` + e.root + ` "}`
+	require.NoError(t, e.q.UpsertSetting(ctx, dbq.UpsertSettingParams{Key: "app", Value: raw}))
+	e.svc.set = settings.NewStore(e.q)
+
+	it, err := e.svc.Get(ctx, id)
+	require.NoError(t, err)
+	rec := httptest.NewRecorder()
+	require.NoError(t, e.svc.Download(rec, httptest.NewRequest("GET", "/dl", nil), it))
+	assert.Equal(t, "payload", rec.Body.String())
+	require.NoError(t, e.svc.Delete(ctx, id))
+	assert.NoDirExists(t, filepath.Join(e.root, "Item"))
 }
 
 func TestDeleteRemovesFolderAndMarksDeleted(t *testing.T) {
@@ -274,20 +324,21 @@ func TestListFilter(t *testing.T) {
 	assert.Len(t, all, 2)
 }
 
-func TestDeleteRefusesSymlinkedAndNestedFolders(t *testing.T) {
+func TestDeleteRefusesSymlinkedFolders(t *testing.T) {
 	e := newEnv(t)
 	ctx := context.Background()
 	downloads := t.TempDir()
 	victim := filepath.Join(downloads, "keep.bin")
 	require.NoError(t, os.WriteFile(victim, []byte("x"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(downloads, "a.txt"), []byte("a"), 0o644))
 	id := e.addItem(t, "Item", map[string]string{"a.txt": "a"})
 
-	// The folder itself is a symlink to a download client directory.
+	// The folder itself is a symlink to a download client directory, stored
+	// directly or reached by name from a nested path.
 	link := filepath.Join(e.root, "link")
 	require.NoError(t, os.Symlink(downloads, link))
-	// A symlinked directory between the root and the folder.
 	require.NoError(t, os.Symlink(downloads, filepath.Join(e.root, "hop")))
-	for _, folder := range []string{link, filepath.Join(e.root, "hop", "sub"), filepath.Join(e.root, "a", "b")} {
+	for _, folder := range []string{link, filepath.Join(e.root, "hop", "link")} {
 		_, err := e.db.Exec("UPDATE library_items SET folder = ? WHERE id = ?", folder, id)
 		require.NoError(t, err)
 		require.ErrorIs(t, e.svc.Delete(ctx, id), ErrUnsafePath, folder)
