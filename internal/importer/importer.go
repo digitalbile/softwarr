@@ -5,7 +5,6 @@ package importer
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -157,107 +156,23 @@ func createFolder(libraryRoot, name string) (string, error) {
 	}
 }
 
-// RootMarker is the file softwarr keeps in the library root. Its presence is
-// how softwarr tells a mounted library from an empty mount point: without it,
-// nothing is imported into the root and no item is removed from it.
-const RootMarker = ".softwarr-library"
-
-// ErrRootNotReady means the library root has no RootMarker, most likely
-// because the library volume isn't mounted.
-var ErrRootNotReady = errors.New("importer: library root has no " + RootMarker + " file")
-
-// PrepareRoot creates root if needed and writes the root marker in it.
-func PrepareRoot(root string) error {
-	if err := os.MkdirAll(root, 0o755); err != nil {
-		return err
-	}
-	p := filepath.Join(root, RootMarker)
-	if RootReady(root) {
-		return nil
-	}
-	const note = "softwarr keeps this file here to know the library folder is mounted. Leave it in place.\n"
-	return os.WriteFile(p, []byte(note), 0o644)
-}
-
-// RootReady reports whether root holds the root marker as a regular file.
-func RootReady(root string) bool {
-	fi, err := os.Lstat(filepath.Join(root, RootMarker))
-	return err == nil && fi.Mode().IsRegular()
-}
-
-// ItemMarker is the file softwarr keeps in each library folder it creates.
-// It names the request the folder belongs to, so softwarr only empties or
-// removes a folder it can show is its own. SanitizeName trims leading dots, so
-// no imported file can take this name.
-const ItemMarker = ".softwarr-item"
-
-type itemMarker struct {
-	RequestID int64 `json:"requestId"`
-}
-
-// MarkItemFolder writes the item marker for requestID into folder.
-func MarkItemFolder(folder string, requestID int64) error {
-	b, err := json.Marshal(itemMarker{RequestID: requestID})
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(filepath.Join(folder, ItemMarker), b, 0o644)
-}
-
-// FolderMarkedFor reports whether folder holds an item marker, as a regular
-// file, naming requestID.
-func FolderMarkedFor(folder string, requestID int64) bool {
-	p := filepath.Join(folder, ItemMarker)
-	if fi, err := os.Lstat(p); err != nil || !fi.Mode().IsRegular() {
-		return false
-	}
-	b, err := os.ReadFile(p)
-	if err != nil {
-		return false
-	}
-	var m itemMarker
-	return json.Unmarshal(b, &m) == nil && m.RequestID == requestID
-}
-
 // ClaimFolder creates a new folder for releaseName directly in libraryRoot,
-// adding " (2)", " (3)", ... if the name is taken, marks it for requestID,
-// and returns its absolute path.
-func ClaimFolder(libraryRoot, releaseName string, requestID int64) (string, error) {
+// adding " (2)", " (3)", ... if the name is taken, and returns its absolute
+// path. It never creates libraryRoot itself.
+func ClaimFolder(libraryRoot, releaseName string) (string, error) {
 	root, err := filepath.Abs(libraryRoot)
 	if err != nil {
 		return "", err
 	}
-	folder, err := createFolder(root, SanitizeName(releaseName))
-	if err != nil {
-		return "", err
-	}
-	if err := MarkItemFolder(folder, requestID); err != nil {
-		os.RemoveAll(folder)
-		return "", err
-	}
-	return folder, nil
-}
-
-// ClaimFolderAt creates folder, which must not exist yet, and marks it for
-// requestID.
-func ClaimFolderAt(folder string, requestID int64) error {
-	if err := os.Mkdir(folder, 0o755); err != nil {
-		return err
-	}
-	if err := MarkItemFolder(folder, requestID); err != nil {
-		os.RemoveAll(folder)
-		return err
-	}
-	return nil
+	return createFolder(root, SanitizeName(releaseName))
 }
 
 // Import claims a folder for releaseName in libraryRoot and imports into it.
-// The folder is marked with request id 0.
 func Import(ctx context.Context, src Source, libraryRoot, releaseName string) (Result, error) {
 	if err := check(ctx, src); err != nil {
 		return Result{}, err
 	}
-	folder, err := ClaimFolder(libraryRoot, releaseName, 0)
+	folder, err := ClaimFolder(libraryRoot, releaseName)
 	if err != nil {
 		return Result{}, err
 	}
