@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { expect, test, vi } from 'vitest'
 import { FakeEventSource, renderApp, useApiServer } from './test/utils'
-import { makeUser, server } from './test/server'
+import { makeUser, mustChangeGate, server } from './test/server'
 
 useApiServer()
 
@@ -52,6 +52,56 @@ test('signed-in user landing on login with an error goes to the profile', async 
 test('must-change-password user is sent to change password page', async () => {
   signedInAs({ mustChangePassword: true })
   renderApp('/search')
+  expect(await screen.findByRole('heading', { name: 'Choose a new password' })).toBeInTheDocument()
+})
+
+test('must-change user reaches the change password page and can submit', async () => {
+  let changed = false
+  const requests: string[] = []
+  server.events.on('request:start', ({ request }) => {
+    requests.push(`${request.method} ${new URL(request.url).pathname}`)
+  })
+  server.use(
+    http.get('*/api/v1/auth/me', () => HttpResponse.json(makeUser({ mustChangePassword: !changed }))),
+    http.post('*/api/v1/auth/password', () => {
+      changed = true
+      return new HttpResponse(null, { status: 204 })
+    }),
+  )
+  server.use(mustChangeGate(() => !changed))
+  renderApp('/search')
+  expect(await screen.findByRole('heading', { name: 'Choose a new password' })).toBeInTheDocument()
+  const blocked = requests.filter((r) => r.startsWith('GET') && !r.match(/setup|auth\/me|oidc|ping/))
+  expect(blocked).toEqual([])
+  expect(FakeEventSource.instances).toHaveLength(0)
+
+  await userEvent.type(screen.getByLabelText(/Current password/), 'temporary')
+  await userEvent.type(screen.getByLabelText(/New password/), 'my own password')
+  await userEvent.click(screen.getByRole('button', { name: 'Change password' }))
+  expect(await screen.findByRole('heading', { name: 'Search' })).toBeInTheDocument()
+  server.events.removeAllListeners()
+})
+
+test('a failing setup check does not sign a must-change user out', async () => {
+  server.use(
+    http.get('*/api/v1/setup', () => HttpResponse.json({ error: 'password_change_required' }, { status: 403 })),
+    http.get('*/api/v1/auth/me', () => HttpResponse.json(makeUser({ mustChangePassword: true }))),
+  )
+  renderApp('/search')
+  expect(await screen.findByRole('heading', { name: 'Choose a new password' })).toBeInTheDocument()
+  expect(screen.queryByText('Sign in to softwarr')).not.toBeInTheDocument()
+})
+
+test('a password reset mid-session sends the user to the change password page', async () => {
+  let reset = false
+  server.use(http.get('*/api/v1/auth/me', () => HttpResponse.json(makeUser({ mustChangePassword: reset }))))
+  server.use(mustChangeGate(() => reset))
+  renderApp('/search')
+  await screen.findByRole('heading', { name: 'Search' })
+  await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1))
+  reset = true
+  // The refetch this triggers hits the gate.
+  FakeEventSource.instances[0].emit('notification', { id: 1 })
   expect(await screen.findByRole('heading', { name: 'Choose a new password' })).toBeInTheDocument()
 })
 

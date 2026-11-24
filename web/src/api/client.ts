@@ -42,6 +42,9 @@ export async function api<T>(path: string, init: RequestInit & { json?: unknown 
       // keep the status text
     }
     if (res.status === 401) window.dispatchEvent(new Event('softwarr:unauthorized'))
+    if (res.status === 403 && message === 'password_change_required') {
+      window.dispatchEvent(new Event('softwarr:password-change-required'))
+    }
     throw new ApiError(message, res.status)
   }
   if (res.status === 204) return undefined as T

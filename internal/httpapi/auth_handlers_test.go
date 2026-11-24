@@ -173,9 +173,18 @@ func TestMustChangePasswordBlocksOtherRoutes(t *testing.T) {
 	_, err := ts.DB.Exec(`UPDATE users SET must_change_password = 1 WHERE id = ?`, u.ID)
 	require.NoError(t, err)
 
-	resp := ts.do("GET", "/api/v1/setup", nil)
+	resp := ts.do("GET", "/api/v1/requests", nil)
 	assert.Equal(t, http.StatusForbidden, resp.StatusCode)
 	assert.Equal(t, "password_change_required", errorBody(t, resp))
+	resp = ts.do("GET", "/api/v1/events", nil)
+	assert.Equal(t, http.StatusForbidden, resp.StatusCode)
+
+	// The web app asks /setup before /auth/me, so it has to keep working.
+	resp = ts.do("GET", "/api/v1/setup", nil)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.Equal(t, false, decode[map[string]bool](t, resp)["needed"])
+	resp = ts.do("GET", "/api/v1/auth/oidc/config", nil)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
 	resp = ts.do("GET", "/api/v1/auth/me", nil)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
