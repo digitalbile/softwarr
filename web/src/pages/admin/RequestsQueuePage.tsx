@@ -87,7 +87,7 @@ export function RequestsQueuePage() {
                     )}
                     {r.error && (
                       <Text size="xs" c="red">
-                        {r.error}
+                        {r.errorDetail || r.error}
                       </Text>
                     )}
                   </Table.Td>

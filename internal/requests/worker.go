@@ -127,22 +127,22 @@ func (w *Worker) grab(ctx context.Context, row dbq.Request) error {
 		}
 	}
 	if rel.Protocol != "torrent" {
-		return w.fail(ctx, row.ID, ActGrabFailed, "Only torrent downloads are supported.")
+		return w.fail(ctx, row.ID, ActGrabFailed, "Only torrent downloads are supported.", "")
 	}
 	cfg, ok, err := downloadclient.PickClient(ctx, w.q, rel.Protocol)
 	if err != nil {
 		return err
 	}
 	if !ok {
-		return w.fail(ctx, row.ID, ActGrabFailed, ErrNoClient.Error())
+		return w.fail(ctx, row.ID, ActGrabFailed, ErrNoClient.Error(), "")
 	}
 	c, err := w.client(cfg)
 	if err != nil {
-		return w.fail(ctx, row.ID, ActGrabFailed, fmt.Sprintf("The download client %s couldn't be set up: %v", cfg.Name, err))
+		return w.fail(ctx, row.ID, ActGrabFailed, msgGrabFailed, fmt.Sprintf("The download client %s couldn't be set up: %v", cfg.Name, err))
 	}
 	add, err := w.resolve(ctx, rel)
 	if err != nil {
-		return w.fail(ctx, row.ID, ActGrabFailed, err.Error())
+		return w.fail(ctx, row.ID, ActGrabFailed, msgGrabFailed, err.Error())
 	}
 	// Fetching can take a while; don't add a torrent for a request an admin
 	// abandoned meanwhile.
@@ -151,7 +151,7 @@ func (w *Worker) grab(ctx context.Context, row dbq.Request) error {
 	}
 	id, err := c.Add(ctx, add)
 	if err != nil {
-		return w.fail(ctx, row.ID, ActGrabFailed, fmt.Sprintf("%s didn't accept the torrent: %v", cfg.Name, err))
+		return w.fail(ctx, row.ID, ActGrabFailed, msgGrabFailed, fmt.Sprintf("%s didn't accept the torrent: %v", cfg.Name, err))
 	}
 	now := w.now().Unix()
 	_, err = w.svc.transition(ctx, row.ID, ActGrabbed, func(u *dbq.UpdateRequestParams) {
@@ -285,7 +285,7 @@ func redactURL(raw string) string {
 func (w *Worker) poll(ctx context.Context, row dbq.Request) error {
 	c, err := w.clientByID(ctx, row.ClientID.Int64)
 	if errors.Is(err, errClientGone) {
-		return w.fail(ctx, row.ID, ActClientError, errClientGone.Error())
+		return w.fail(ctx, row.ID, ActClientError, errClientGone.Error(), "")
 	}
 	if err != nil {
 		return err
@@ -297,7 +297,8 @@ func (w *Worker) poll(ctx context.Context, row dbq.Request) error {
 	now := w.now().Unix()
 	switch it.State {
 	case downloadclient.StateError, downloadclient.StateMissing:
-		return w.fail(ctx, row.ID, ActClientError, clientMessage(it))
+		msg, detail := clientMessage(it)
+		return w.fail(ctx, row.ID, ActClientError, msg, detail)
 	case downloadclient.StateCompleted:
 		_, err := w.svc.transition(ctx, row.ID, ActCompleted, func(u *dbq.UpdateRequestParams) {
 			if u.Progress < 1 {
@@ -324,14 +325,20 @@ func (w *Worker) poll(ctx context.Context, row dbq.Request) error {
 	return nil
 }
 
-func clientMessage(it downloadclient.Item) string {
-	if strings.TrimSpace(it.Message) != "" {
-		return it.Message
-	}
+// clientMessage returns the message for a download the client reports as
+// failed or gone, and the client's own words as the admin detail.
+func clientMessage(it downloadclient.Item) (msg, detail string) {
+	msg = "The download client reported an error."
 	if it.State == downloadclient.StateMissing {
-		return "The download client no longer has this download."
+		msg = "The download client no longer has this download."
 	}
-	return "The download client reported an error."
+	if d := strings.TrimSpace(it.Message); d != "" {
+		detail = d
+		if it.State != downloadclient.StateMissing {
+			msg = "The download client reported an error. An admin has the details."
+		}
+	}
+	return msg, detail
 }
 
 func (w *Worker) importDownload(ctx context.Context, row dbq.Request) error {
@@ -345,11 +352,11 @@ func (w *Worker) importDownload(ctx context.Context, row dbq.Request) error {
 	}
 	root := st.LibraryRoot
 	if root == "" {
-		return w.fail(ctx, row.ID, ActImportFailed, ErrNoLibraryRoot.Error())
+		return w.fail(ctx, row.ID, ActImportFailed, ErrNoLibraryRoot.Error(), "")
 	}
 	c, err := w.clientByID(ctx, row.ClientID.Int64)
 	if errors.Is(err, errClientGone) {
-		return w.fail(ctx, row.ID, ActImportFailed, errClientGone.Error())
+		return w.fail(ctx, row.ID, ActImportFailed, errClientGone.Error(), "")
 	}
 	if err != nil {
 		return err
@@ -359,7 +366,8 @@ func (w *Worker) importDownload(ctx context.Context, row dbq.Request) error {
 		return err
 	}
 	if it.State == downloadclient.StateMissing {
-		return w.fail(ctx, row.ID, ActImportFailed, clientMessage(it))
+		msg, detail := clientMessage(it)
+		return w.fail(ctx, row.ID, ActImportFailed, msg, detail)
 	}
 	ms, err := pathmap.Load(ctx, w.q)
 	if err != nil {
@@ -371,7 +379,7 @@ func (w *Worker) importDownload(ctx context.Context, row dbq.Request) error {
 		return nil // abandoned meanwhile
 	}
 	if err != nil {
-		return w.fail(ctx, row.ID, ActImportFailed, fmt.Sprintf("The library folder for this import couldn't be created: %v", err))
+		return w.fail(ctx, row.ID, ActImportFailed, msgImportFailed, fmt.Sprintf("The library folder for this import couldn't be created: %v", err))
 	}
 	res, err := importer.ImportInto(ctx, importer.Source{BaseDir: base, Files: it.Files, Protocol: rel.Protocol}, folder)
 	if err != nil {
@@ -381,7 +389,7 @@ func (w *Worker) importDownload(ctx context.Context, row dbq.Request) error {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		return w.fail(ctx, row.ID, ActImportFailed, fmt.Sprintf("Importing from %s failed: %v", base, err))
+		return w.fail(ctx, row.ID, ActImportFailed, msgImportFailed, fmt.Sprintf("Importing from %s failed: %v", base, err))
 	}
 
 	// Record even when shutting down: the files are in place, and an
@@ -509,23 +517,38 @@ func (w *Worker) record(ctx context.Context, row dbq.Request, rel prowlarr.Relea
 	return req, itemID, nil
 }
 
-// fail applies a failing action with msg as the request's error and tells the
-// requester and admins.
-func (w *Worker) fail(ctx context.Context, id int64, a Action, msg string) error {
+// Messages a requester sees when the real error has details only admins
+// should see, such as paths or the download client's own words.
+const (
+	msgGrabFailed   = "The download couldn't be started. An admin has the details."
+	msgImportFailed = "The download finished but couldn't be added to the library. An admin has the details."
+)
+
+// fail applies a failing action. msg is the request's error as the requester
+// sees it; detail, if set, is the full error for admins. The requester is
+// told msg, admins are told detail, and webhooks get msg.
+func (w *Worker) fail(ctx context.Context, id int64, a Action, msg, detail string) error {
 	if err := ctx.Err(); err != nil {
 		return err // shutting down, not a real failure
 	}
-	req, err := w.svc.transition(ctx, id, a, func(u *dbq.UpdateRequestParams) { u.Error = msg })
+	req, err := w.svc.transition(ctx, id, a, func(u *dbq.UpdateRequestParams) {
+		u.Error = msg
+		u.ErrorDetail = sql.NullString{String: detail, Valid: detail != ""}
+	})
 	if err != nil {
 		return skipChanged(err)
 	}
-	slog.Warn("request failed", "request", id, "action", a, "err", msg)
-	w.svc.emit(ctx, notify.Event{
+	slog.Warn("request failed", "request", id, "action", a, "err", msg, "detail", detail)
+	e := notify.Event{
 		Type:      notify.EvRequestFailed,
 		Message:   fmt.Sprintf("The request for %s failed: %s", req.DisplayTitle, msg),
 		RequestID: id, ToUserIDs: []int64{req.RequesterID}, ToAdmins: true,
 		Payload: map[string]any{"requestId": id, "title": req.DisplayTitle, "error": msg},
-	})
+	}
+	if detail != "" {
+		e.AdminMessage = fmt.Sprintf("The request for %s failed: %s", req.DisplayTitle, detail)
+	}
+	w.svc.emit(ctx, e)
 	return nil
 }
 

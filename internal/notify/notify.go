@@ -33,13 +33,16 @@ var AllEvents = []string{
 
 // Event is something worth telling people about.
 type Event struct {
-	Type      string
-	Message   string
-	RequestID int64 // 0 means none
-	ItemID    int64 // 0 means none
-	ToUserIDs []int64
-	ToAdmins  bool
-	Payload   map[string]any // extra webhook body fields
+	Type    string
+	Message string
+	// AdminMessage, if set, replaces Message for admin recipients. It can
+	// carry details requesters shouldn't see; webhooks get Message.
+	AdminMessage string
+	RequestID    int64 // 0 means none
+	ItemID       int64 // 0 means none
+	ToUserIDs    []int64
+	ToAdmins     bool
+	Payload      map[string]any // extra webhook body fields
 }
 
 // Notification is the JSON shape of a stored notification, also sent over SSE.
@@ -92,19 +95,25 @@ func nullID(id int64) sql.NullInt64 { return sql.NullInt64{Int64: id, Valid: id 
 // matching webhooks in the background. Failures are logged.
 func (s *Service) Emit(ctx context.Context, e Event) {
 	recipients := slices.Clone(e.ToUserIDs)
+	var admins []int64
 	if e.ToAdmins {
 		ids, err := s.q.ListActiveAdminIDs(ctx)
 		if err != nil {
 			slog.Error("notify: list admins", "err", err)
 		}
+		admins = ids
 		recipients = append(recipients, ids...)
 	}
 	slices.Sort(recipients)
 	recipients = slices.Compact(recipients)
 
 	for _, uid := range recipients {
+		msg := e.Message
+		if e.AdminMessage != "" && slices.Contains(admins, uid) {
+			msg = e.AdminMessage
+		}
 		row, err := s.q.InsertNotification(ctx, dbq.InsertNotificationParams{
-			UserID: uid, Type: e.Type, Message: e.Message,
+			UserID: uid, Type: e.Type, Message: msg,
 			RequestID: nullID(e.RequestID), ItemID: nullID(e.ItemID),
 			CreatedAt: s.now().Unix(),
 		})

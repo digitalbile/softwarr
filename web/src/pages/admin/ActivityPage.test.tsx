@@ -30,6 +30,7 @@ test('activity shows stalled badge and retry for failed', async () => {
       act({ requestId: 1, title: 'Slow app', stalled: true }),
       act({ requestId: 2, title: 'Broken app', status: 'failed', error: 'Disk full', progress: 0.2 }),
       act({ requestId: 3, title: 'Importing app', status: 'importing', progress: 1 }),
+      act({ requestId: 4, title: 'Hidden app', status: 'failed', error: 'An admin has the details.', errorDetail: 'Importing from /dl failed' }),
     ],
     [http.post('*/api/v1/requests/:id/retry', ({ params }) => { retried = String(params.id); return HttpResponse.json({}) })],
   )
@@ -38,6 +39,7 @@ test('activity shows stalled badge and retry for failed', async () => {
   expect(within(row('Slow app')).getByRole('progressbar')).toHaveAttribute('aria-valuenow', '50')
   expect(within(row('Slow app')).queryByRole('button', { name: /Retry/ })).not.toBeInTheDocument()
   expect(within(row('Broken app')).getByText('Disk full')).toBeInTheDocument()
+  expect(within(row('Hidden app')).getByText('Importing from /dl failed')).toBeInTheDocument()
   expect(within(row('Importing app')).queryByRole('button')).not.toBeInTheDocument()
   await userEvent.click(within(row('Broken app')).getByRole('button', { name: 'Retry Broken app' }))
   await waitFor(() => expect(retried).toBe('2'))

@@ -70,10 +70,12 @@ type Request struct {
 	DisplayTitle    string            `json:"displayTitle"`
 	DenyReason      string            `json:"denyReason"`
 	Error           string            `json:"error"`
-	Progress        float64           `json:"progress"`
-	LibraryItemID   *int64            `json:"libraryItemId"`
-	CreatedAt       time.Time         `json:"createdAt"`
-	UpdatedAt       time.Time         `json:"updatedAt"`
+	// ErrorDetail is the full error behind Error, for admins only.
+	ErrorDetail   string    `json:"errorDetail,omitempty"`
+	Progress      float64   `json:"progress"`
+	LibraryItemID *int64    `json:"libraryItemId"`
+	CreatedAt     time.Time `json:"createdAt"`
+	UpdatedAt     time.Time `json:"updatedAt"`
 }
 
 // ApproveOpts adjusts an approval. Replacement must be a release the server

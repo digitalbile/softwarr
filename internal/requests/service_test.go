@@ -26,6 +26,7 @@ type env struct {
 	q      *dbq.Queries
 	st     *settings.Store
 	b      *events.Broker
+	n      *notify.Service
 	admin  auth.Principal
 	user   auth.Principal
 	other  auth.Principal
@@ -51,7 +52,7 @@ func newEnv(t *testing.T) env {
 	}
 	e := env{
 		svc: NewService(d, q, st, n, b, func() time.Time { return fixedNow }),
-		q:   q, st: st, b: b,
+		q:   q, st: st, b: b, n: n,
 		admin: mk("admin", true, false), user: mk("user", false, false),
 		other: mk("other", false, false), flaggd: mk("flagged", false, true),
 	}

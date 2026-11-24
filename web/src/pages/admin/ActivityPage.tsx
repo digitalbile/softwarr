@@ -63,7 +63,7 @@ export function ActivityPage() {
                       {a.title}
                       {a.error && (
                         <Text size="xs" c="red">
-                          {a.error}
+                          {a.errorDetail || a.error}
                         </Text>
                       )}
                     </Table.Td>

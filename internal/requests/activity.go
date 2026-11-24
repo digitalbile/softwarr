@@ -8,14 +8,16 @@ import (
 // Activity is one request the worker is handling, or one that failed and is
 // waiting for an admin.
 type Activity struct {
-	RequestID int64     `json:"requestId"`
-	Title     string    `json:"title"`
-	Requester string    `json:"requester"`
-	Status    Status    `json:"status"`
-	Progress  float64   `json:"progress"`
-	Stalled   bool      `json:"stalled"`
-	Error     string    `json:"error"`
-	UpdatedAt time.Time `json:"updatedAt"`
+	RequestID int64   `json:"requestId"`
+	Title     string  `json:"title"`
+	Requester string  `json:"requester"`
+	Status    Status  `json:"status"`
+	Progress  float64 `json:"progress"`
+	Stalled   bool    `json:"stalled"`
+	Error     string  `json:"error"`
+	// ErrorDetail is the full error behind Error; Activity is admin-only.
+	ErrorDetail string    `json:"errorDetail,omitempty"`
+	UpdatedAt   time.Time `json:"updatedAt"`
 }
 
 // Activity lists approved, downloading, importing, and failed requests, newest
@@ -36,7 +38,7 @@ func (s *Service) Activity(ctx context.Context) ([]Activity, error) {
 	for _, r := range rows {
 		a := Activity{
 			RequestID: r.ID, Title: r.DisplayTitle, Requester: r.Requester, Status: Status(r.Status),
-			Progress: r.Progress, Error: r.Error, UpdatedAt: time.Unix(r.UpdatedAt, 0).UTC(),
+			Progress: r.Progress, Error: r.Error, ErrorDetail: r.ErrorDetail.String, UpdatedAt: time.Unix(r.UpdatedAt, 0).UTC(),
 		}
 		if a.Status == Downloading && st.StallHours > 0 && r.LastProgressAt.Valid {
 			a.Stalled = now.Sub(time.Unix(r.LastProgressAt.Int64, 0)) > threshold
