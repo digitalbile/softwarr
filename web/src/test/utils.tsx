@@ -12,6 +12,7 @@ export class FakeEventSource {
   static instances: FakeEventSource[] = []
   listeners = new Map<string, ((e: MessageEvent) => void)[]>()
   closed = false
+  readyState = 0
   constructor(public url: string) {
     FakeEventSource.instances.push(this)
   }
@@ -20,6 +21,17 @@ export class FakeEventSource {
   }
   close() {
     this.closed = true
+    this.readyState = 2
+  }
+  // The connection opened.
+  open() {
+    this.readyState = 1
+    this.emit('open')
+  }
+  // The browser gave up on the stream, as after a refused reconnect.
+  fail() {
+    this.readyState = 2
+    this.emit('error')
   }
   emit(type: string, data: unknown = {}) {
     for (const fn of this.listeners.get(type) ?? []) fn(new MessageEvent(type, { data: JSON.stringify(data) }))
