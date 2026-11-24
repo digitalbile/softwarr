@@ -51,4 +51,27 @@ export const handlers = [
   http.get('*/api/v1/requests', () => HttpResponse.json([])),
 ]
 
+// The routes the server lets a user with a temporary password reach. Keep in
+// step with mustChangeExempt in internal/httpapi/middleware.go.
+export const mustChangeExempt = [
+  'GET /api/v1/setup',
+  'GET /api/v1/auth/me',
+  'GET /api/v1/auth/oidc/config',
+  'GET /api/v1/ping',
+  'POST /api/v1/auth/password',
+  'POST /api/v1/auth/logout',
+]
+
+// mustChangeGate answers every other API route the way the server does for a
+// user who still has to change their password, for as long as active() says
+// so. Pass it to its own server.use call after the handlers for the exempt
+// routes, so it is checked first and falls through for those.
+export function mustChangeGate(active: () => boolean = () => true) {
+  return http.all('*/api/v1/*', ({ request }) => {
+    const key = `${request.method} ${new URL(request.url).pathname}`
+    if (!active() || mustChangeExempt.includes(key)) return undefined
+    return HttpResponse.json({ error: 'password_change_required' }, { status: 403 })
+  })
+}
+
 export const server = setupServer(...handlers)

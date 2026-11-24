@@ -76,9 +76,12 @@ func (s *server) clearSessionCookie(w http.ResponseWriter, r *http.Request) {
 func isSafeMethod(m string) bool { return m == http.MethodGet || m == http.MethodHead }
 
 // mustChangeExempt lists the routes a user with a temporary password may use.
+// The web app asks /setup before /auth/me, and the login page reads the SSO
+// config; both are public, so letting them through gives nothing away.
 func mustChangeExempt(r *http.Request) bool {
 	switch r.Method + " " + r.URL.Path {
-	case "GET /api/v1/auth/me", "POST /api/v1/auth/password", "POST /api/v1/auth/logout":
+	case "GET /api/v1/auth/me", "POST /api/v1/auth/password", "POST /api/v1/auth/logout",
+		"GET /api/v1/setup", "GET /api/v1/auth/oidc/config", "GET /api/v1/ping":
 		return true
 	}
 	return false
