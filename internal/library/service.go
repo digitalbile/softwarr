@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -13,8 +14,6 @@ import (
 
 	"github.com/digitalbile/softwarr/internal/db/dbq"
 	"github.com/digitalbile/softwarr/internal/events"
-	"github.com/digitalbile/softwarr/internal/fsutil"
-	"github.com/digitalbile/softwarr/internal/importer"
 	"github.com/digitalbile/softwarr/internal/notify"
 	"github.com/digitalbile/softwarr/internal/settings"
 )
@@ -22,17 +21,14 @@ import (
 var (
 	ErrNotFound         = errors.New("That library item doesn't exist.")
 	ErrInvalidRetention = errors.New("Retention days can't be negative.")
-	// ErrUnsafePath is returned when a stored folder or file path resolves
-	// outside the place it must live in. Nothing is read or removed.
-	ErrUnsafePath = errors.New("library: path is outside the library")
+	// ErrUnsafePath is returned when a stored folder isn't safe to use or a
+	// file path resolves outside its folder. Nothing is read or removed.
+	ErrUnsafePath = errors.New("library: unsafe item path")
 	// ErrFolderMissing means the item's folder isn't on disk and the library
-	// root has no marker, most likely because the library volume isn't
-	// mounted. The item is left as it is.
+	// root it was in is missing, or empty while items are recorded in it,
+	// most likely because the library volume isn't mounted. The item is left
+	// as it is.
 	ErrFolderMissing = errors.New("The library folder for this item is missing. Check that the library path is mounted.")
-	// ErrFolderNotConfirmed means the library root moved and the folder
-	// found in its place has no marker naming this item's request, so it may
-	// not be softwarr's. Nothing is removed.
-	ErrFolderNotConfirmed = errors.New("softwarr couldn't confirm that the folder for this item is its own, so it left it alone. Check the library folder in Settings.")
 )
 
 // File is one file of an item, relative to the item's folder.
@@ -60,9 +56,8 @@ type Item struct {
 	Files            []File     `json:"files"`
 	ExpiresAt        *time.Time `json:"expiresAt"`
 
-	// Folder, RequestID and RequesterID are for the server only.
+	// Folder and RequesterID are for the server only.
 	Folder      string `json:"-"`
-	RequestID   int64  `json:"-"`
 	RequesterID int64  `json:"-"`
 }
 
@@ -84,7 +79,7 @@ func toItem(r dbq.ListAvailableLibraryItemsRow, files []File, defaultDays int) I
 		ID: r.ID, Title: r.DisplayTitle, ReleaseName: r.ReleaseName, TotalSize: r.TotalSize,
 		Protocol: r.Protocol, Indexer: r.Indexer, Requester: r.Requester, Comment: r.Comment,
 		Approver: r.Approver, ImportMode: r.ImportMode, DownloadCount: int(r.DownloadCount),
-		ImportedAt: time.Unix(r.ImportedAt, 0), Files: files, Folder: r.Folder, RequestID: r.RequestID, RequesterID: r.RequesterID,
+		ImportedAt: time.Unix(r.ImportedAt, 0), Files: files, Folder: r.Folder, RequesterID: r.RequesterID,
 	}
 	if it.Files == nil {
 		it.Files = []File{}
@@ -232,73 +227,92 @@ func (s *Service) publish(id int64) {
 	s.b.Publish(events.Message{Type: events.TypeLibraryUpdated, Data: map[string]any{"id": id}, All: true})
 }
 
-// itemFolder returns the current library root and where the item's folder is
-// in it. The importer always creates root/<name>, so the folder is found by
-// its name in the current root: an admin can move the root along with its
-// contents and change the setting.
-func (s *Service) itemFolder(ctx context.Context, it Item) (root, folder string, err error) {
-	set, err := s.set.Get(ctx)
-	if err != nil {
-		return "", "", err
-	}
-	root = set.LibraryRoot
-	name := filepath.Base(it.Folder)
-	if it.Folder == "" || name == "." || name == ".." || name == string(filepath.Separator) {
-		return "", "", fmt.Errorf("%w: %q", ErrUnsafePath, it.Folder)
-	}
-	folder = filepath.Join(root, name)
-	if err := folderInRoot(root, folder); err != nil {
-		return "", "", err
-	}
-	return root, folder, nil
-}
-
-// folderInRoot verifies folder is a direct child of root and not a symlink.
-func folderInRoot(root, folder string) error {
-	if root == "" || folder == "" {
+// checkFolder verifies a stored item folder is safe to read or remove: a
+// clean absolute path, not the filesystem root or a folder directly in it, and
+// not a symlink. Items stay at the folder they were imported to, even after
+// the library root setting changes.
+func checkFolder(folder string) error {
+	if folder == "" || !filepath.IsAbs(folder) || filepath.Clean(folder) != folder {
 		return fmt.Errorf("%w: %q", ErrUnsafePath, folder)
 	}
-	if !fsutil.Within(root, folder) {
+	parent := filepath.Dir(folder)
+	if parent == folder || filepath.Dir(parent) == parent {
 		return fmt.Errorf("%w: %q", ErrUnsafePath, folder)
 	}
-	// The importer always creates root/<name>, so the folder must be a direct
-	// child of the root, and must not be a symlink that leads elsewhere.
-	absRoot, err1 := filepath.Abs(root)
-	absFolder, err2 := filepath.Abs(folder)
-	if err1 != nil || err2 != nil || filepath.Dir(absFolder) != absRoot {
-		return fmt.Errorf("%w: %q", ErrUnsafePath, folder)
-	}
-	if fi, err := os.Lstat(absFolder); err == nil && fi.Mode()&os.ModeSymlink != 0 {
+	if fi, err := os.Lstat(folder); err == nil && fi.Mode()&os.ModeSymlink != 0 {
 		return fmt.Errorf("%w: %q is a symlink", ErrUnsafePath, folder)
 	}
 	return nil
 }
 
-// removeFolder deletes an item's library folder. A missing folder only counts
-// as removed when the library root holds its marker, showing it is mounted:
-// os.RemoveAll would report nothing wrong either way, and an unmounted volume
-// still holds the files.
+// RootUnmounted reports whether the library root looks unmounted: it is
+// missing or unreadable, or it is empty while the database still records
+// available items in it. An empty root with no items is a new library.
+func RootUnmounted(ctx context.Context, q *dbq.Queries, root string) (bool, error) {
+	f, err := os.Open(root)
+	if err != nil {
+		return true, nil
+	}
+	defer f.Close()
+	if fi, err := f.Stat(); err != nil || !fi.IsDir() {
+		return true, nil
+	}
+	names, err := f.Readdirnames(1)
+	if err != nil && !errors.Is(err, io.EOF) {
+		return true, nil
+	}
+	if len(names) > 0 {
+		return false, nil
+	}
+	n, err := ItemsIn(ctx, q, root)
+	return n > 0, err
+}
+
+// ItemsIn counts the available items whose folder is directly in root.
+func ItemsIn(ctx context.Context, q *dbq.Queries, root string) (int, error) {
+	folders, err := q.ListAvailableLibraryFolders(ctx)
+	if err != nil {
+		return 0, err
+	}
+	root = filepath.Clean(root)
+	n := 0
+	for _, f := range folders {
+		if filepath.Dir(filepath.Clean(f)) == root {
+			n++
+		}
+	}
+	return n, nil
+}
+
+// removeFolder deletes an item's folder at its stored path. A folder that is
+// already gone counts as removed, except when it was in the current library
+// root and that root looks unmounted: os.RemoveAll would report nothing wrong
+// either way, and an unmounted volume still holds the files.
 func (s *Service) removeFolder(ctx context.Context, it Item) error {
-	root, folder, err := s.itemFolder(ctx, it)
+	if err := checkFolder(it.Folder); err != nil {
+		return err
+	}
+	_, err := os.Lstat(it.Folder)
+	if err == nil {
+		return os.RemoveAll(it.Folder)
+	}
+	if !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	set, err := s.set.Get(ctx)
 	if err != nil {
 		return err
 	}
-	if _, err := os.Lstat(folder); errors.Is(err, os.ErrNotExist) {
-		if importer.RootReady(root) {
-			return nil // someone removed it by hand; the item can go
+	if root := filepath.Dir(it.Folder); root == set.LibraryRoot {
+		unmounted, err := RootUnmounted(ctx, s.q, root)
+		if err != nil {
+			return err
 		}
-		return ErrFolderMissing
-	} else if err != nil {
-		return err
+		if unmounted {
+			return ErrFolderMissing
+		}
 	}
-	// After the root moves, a folder of the same name could be something
-	// else, such as the download client's seeding copy, which holds the very
-	// same file names. Only remove it if it carries this item's marker.
-	if folder != filepath.Clean(it.Folder) && !importer.FolderMarkedFor(folder, it.RequestID) {
-		slog.Warn("library: folder not confirmed as softwarr's, left in place", "id", it.ID, "folder", folder)
-		return ErrFolderNotConfirmed
-	}
-	return os.RemoveAll(folder)
+	return nil // removed by hand; the item can go
 }
 
 // ApplyRetention expires items past their retention and returns how many.

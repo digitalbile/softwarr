@@ -41,14 +41,13 @@ func attachment(name string) string {
 	return "attachment"
 }
 
-// Download serves an item and records the download when the response starts
-// at byte 0 of a GET. The folder must be inside the library root.
+// Download serves an item from its stored folder and records the download
+// when the response starts at byte 0 of a GET.
 func (s *Service) Download(w http.ResponseWriter, r *http.Request, it Item) error {
-	_, folder, err := s.itemFolder(r.Context(), it)
-	if err != nil {
+	if err := checkFolder(it.Folder); err != nil {
 		return err
 	}
-	return serve(w, r, folder, it, func() {
+	return serve(w, r, it.Folder, it, func() {
 		ctx := context.WithoutCancel(r.Context())
 		if err := s.q.RecordLibraryDownload(ctx, dbq.RecordLibraryDownloadParams{
 			LastDownloadedAt: nullTime(s.now().Unix()), ID: it.ID,

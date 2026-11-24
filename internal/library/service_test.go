@@ -39,7 +39,6 @@ func newEnv(t *testing.T) *env {
 	d, q := testutil.NewDB(t)
 	st := settings.NewStore(q)
 	root := t.TempDir()
-	require.NoError(t, importer.PrepareRoot(root))
 	cur, err := st.Get(context.Background())
 	require.NoError(t, err)
 	cur.LibraryRoot = root
@@ -68,8 +67,6 @@ func (e *env) addItem(t *testing.T, name string, files map[string]string) int64 
 		res.Files = append(res.Files, downloadclient.File{Path: rel, Size: int64(len(content))})
 		res.TotalSize += int64(len(content))
 	}
-	// As the importer leaves it: marked as softwarr's, here with no request.
-	require.NoError(t, importer.MarkItemFolder(folder, 0))
 	rel := prowlarr.Release{GUID: name, Title: name, Indexer: "idx", Protocol: "torrent", InfoHash: name}
 	id, err := CreateItem(context.Background(), e.q, 0, name+" title", rel, res, e.now)
 	require.NoError(t, err)
@@ -89,38 +86,65 @@ func TestRootRepointedAtDownloadsLeavesSeedingFiles(t *testing.T) {
 	e := newEnv(t)
 	ctx := context.Background()
 	setDefaultDays(t, e, 1)
-	// The importer strips the torrent's top folder, so the item's files are
-	// named exactly like the seeding copy's.
-	id := e.addItem(t, "Thing", map[string]string{"setup.dmg": "payload"})
+	// The importer strips the torrent's top folder, so the items' files are
+	// named exactly like the seeding copies'.
+	deleted := e.addItem(t, "Thing", map[string]string{"setup.dmg": "payload"})
+	expiring := e.addItem(t, "Other", map[string]string{"setup.dmg": "payload"})
 	downloads := t.TempDir()
-	seeding := filepath.Join(downloads, "Thing", "setup.dmg")
-	require.NoError(t, os.MkdirAll(filepath.Dir(seeding), 0o755))
-	require.NoError(t, os.WriteFile(seeding, []byte("payload"), 0o644))
+	var seeding []string
+	for _, name := range []string{"Thing", "Other"} {
+		p := filepath.Join(downloads, name, "setup.dmg")
+		require.NoError(t, os.MkdirAll(filepath.Dir(p), 0o755))
+		require.NoError(t, os.WriteFile(p, []byte("payload"), 0o644))
+		seeding = append(seeding, p)
+	}
 	e.repoint(t, downloads)
 
-	err := e.svc.Delete(ctx, id)
-	require.ErrorIs(t, err, ErrFolderNotConfirmed)
-	assert.Equal(t, "softwarr couldn't confirm that the folder for this item is its own, so it left it alone. Check the library folder in Settings.", err.Error())
+	require.NoError(t, e.svc.Delete(ctx, deleted))
 	*e.clock = e.now.Add(48 * time.Hour)
 	n, err := e.svc.ApplyRetention(ctx)
 	require.NoError(t, err)
-	assert.Zero(t, n)
+	assert.Equal(t, 1, n)
 
-	assert.FileExists(t, seeding)
-	assert.Equal(t, "available", itemStatus(t, e, id))
+	// Only the items' own folders, at their stored paths, were removed.
+	assert.NoDirExists(t, filepath.Join(e.root, "Thing"))
+	assert.NoDirExists(t, filepath.Join(e.root, "Other"))
+	for _, p := range seeding {
+		assert.FileExists(t, p)
+	}
+	assert.Equal(t, "deleted", itemStatus(t, e, deleted))
+	assert.Equal(t, "expired", itemStatus(t, e, expiring))
 }
 
-func TestRootRepointedAtFolderMarkedForAnotherRequest(t *testing.T) {
+func TestSameNamedFolderInNewRootIsLeftAlone(t *testing.T) {
 	e := newEnv(t)
-	id := e.addItem(t, "Thing", map[string]string{"a.txt": "a"})
+	ctx := context.Background()
+	setDefaultDays(t, e, 1)
+	gone := e.addItem(t, "Thing", map[string]string{"a.txt": "a"})
+	expiring := e.addItem(t, "Other", map[string]string{"a.txt": "a"})
 	other := t.TempDir()
-	theirs := filepath.Join(other, "Thing")
-	require.NoError(t, os.Mkdir(theirs, 0o755))
-	require.NoError(t, importer.MarkItemFolder(theirs, 42))
+	var theirs []string
+	for _, name := range []string{"Thing", "Other"} {
+		p := filepath.Join(other, name, "a.txt")
+		require.NoError(t, os.MkdirAll(filepath.Dir(p), 0o755))
+		require.NoError(t, os.WriteFile(p, []byte("theirs"), 0o644))
+		theirs = append(theirs, p)
+	}
 	e.repoint(t, other)
+	// The old copies are gone too, so nothing at the stored paths remains.
+	require.NoError(t, os.RemoveAll(e.root))
 
-	require.ErrorIs(t, e.svc.Delete(context.Background(), id), ErrFolderNotConfirmed)
-	assert.DirExists(t, theirs)
+	require.NoError(t, e.svc.Delete(ctx, gone))
+	*e.clock = e.now.Add(48 * time.Hour)
+	n, err := e.svc.ApplyRetention(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, 1, n)
+
+	assert.Equal(t, "deleted", itemStatus(t, e, gone))
+	assert.Equal(t, "expired", itemStatus(t, e, expiring))
+	for _, p := range theirs {
+		assert.FileExists(t, p)
+	}
 }
 
 func TestExpiresAt(t *testing.T) {
@@ -236,56 +260,48 @@ func TestApplyRetentionEmitsItemExpired(t *testing.T) {
 	assert.True(t, sawLibrary)
 }
 
-func TestDeleteRefusesFolderOutsideRoot(t *testing.T) {
+func TestDeleteRefusesUnsafeFolders(t *testing.T) {
 	e := newEnv(t)
 	ctx := context.Background()
-	outside := t.TempDir()
-	victim := filepath.Join(outside, "keep.txt")
-	require.NoError(t, os.WriteFile(victim, []byte("x"), 0o644))
 	id := e.addItem(t, "Item", map[string]string{"a.txt": "a"})
 
-	// Only the stored folder's name is used, so these can't reach outside
-	// the root, and names that aren't a child of the root are refused.
-	for _, folder := range []string{"", "/", ".", "..", e.root + "/.."} {
+	for _, folder := range []string{"", "/", ".", "..", "relative/Item", e.root + "/..", e.root + "/./Item", "/Item"} {
 		_, err := e.db.Exec("UPDATE library_items SET folder = ? WHERE id = ?", folder, id)
 		require.NoError(t, err)
-		err = e.svc.Delete(ctx, id)
-		require.ErrorIs(t, err, ErrUnsafePath, "folder %q", folder)
+		require.ErrorIs(t, e.svc.Delete(ctx, id), ErrUnsafePath, "folder %q", folder)
 	}
-	// A folder elsewhere is looked for in the root by name.
-	require.NoError(t, os.Mkdir(filepath.Join(e.root, filepath.Base(outside)), 0o755))
-	_, err := e.db.Exec("UPDATE library_items SET folder = ? WHERE id = ?", outside, id)
-	require.NoError(t, err)
-	require.ErrorIs(t, e.svc.Delete(ctx, id), ErrFolderNotConfirmed, "a folder softwarr can't show is its own is left alone")
-	assert.FileExists(t, victim)
-	assert.DirExists(t, e.root)
 	assert.DirExists(t, filepath.Join(e.root, "Item"))
-	var status string
-	require.NoError(t, e.db.QueryRow("SELECT status FROM library_items WHERE id = ?", id).Scan(&status))
-	assert.Equal(t, "available", status)
+	assert.Equal(t, "available", itemStatus(t, e, id))
 }
 
-func TestRootMovedWithItsContents(t *testing.T) {
+func TestOldItemsStayAtTheirFolderAfterRootChange(t *testing.T) {
 	e := newEnv(t)
 	ctx := context.Background()
 	id := e.addItem(t, "Item", map[string]string{"setup.dmg": "payload"})
+	setDefaultDays(t, e, 1)
+	gone := e.addItem(t, "Gone", map[string]string{"a.txt": "a"})
+	expiring := e.addItem(t, "Expiring", map[string]string{"a.txt": "a"})
+	require.NoError(t, os.RemoveAll(filepath.Join(e.root, "Gone")))
+	require.NoError(t, os.RemoveAll(filepath.Join(e.root, "Expiring")))
+	e.repoint(t, t.TempDir())
 
-	moved := filepath.Join(t.TempDir(), "newlib")
-	require.NoError(t, os.Rename(e.root, moved))
-	cur, err := e.st.Get(ctx)
-	require.NoError(t, err)
-	cur.LibraryRoot = moved + "/ "
-	require.NoError(t, e.st.Save(ctx, cur))
-
+	// Still at the old path: downloads and deletes there.
 	it, err := e.svc.Get(ctx, id)
 	require.NoError(t, err)
 	rec := httptest.NewRecorder()
 	require.NoError(t, e.svc.Download(rec, httptest.NewRequest("GET", "/dl", nil), it))
 	assert.Equal(t, "payload", rec.Body.String())
-
 	require.NoError(t, e.svc.Delete(ctx, id))
-	assert.NoDirExists(t, filepath.Join(moved, "Item"))
-	assert.DirExists(t, moved)
+	assert.NoDirExists(t, filepath.Join(e.root, "Item"))
+
+	// Gone from the old path: marked gone.
+	require.NoError(t, e.svc.Delete(ctx, gone))
+	assert.Equal(t, "deleted", itemStatus(t, e, gone))
+	*e.clock = e.now.Add(48 * time.Hour)
+	n, err := e.svc.ApplyRetention(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, 1, n)
+	assert.Equal(t, "expired", itemStatus(t, e, expiring))
 }
 
 func TestRootWithWhitespaceWorks(t *testing.T) {
@@ -327,13 +343,9 @@ func TestDeleteAndRetentionKeepItemWhenRootMissing(t *testing.T) {
 	for name, unmount := range map[string]func(t *testing.T, e *env){
 		// As if the library volume weren't mounted.
 		"root gone": func(t *testing.T, e *env) { require.NoError(t, os.RemoveAll(e.root)) },
-		// A mount point without the root marker, even one with something in
-		// it, such as an import that landed while the volume was away.
-		"no root marker": func(t *testing.T, e *env) {
-			require.NoError(t, os.RemoveAll(filepath.Join(e.root, "Item")))
-			require.NoError(t, os.Remove(filepath.Join(e.root, importer.RootMarker)))
-			require.NoError(t, os.WriteFile(filepath.Join(e.root, "stray.txt"), []byte("x"), 0o644))
-		},
+		// An empty mount point while the library has items in it, which is
+		// what Docker leaves for a missing bind mount.
+		"root empty": func(t *testing.T, e *env) { require.NoError(t, os.RemoveAll(filepath.Join(e.root, "Item"))) },
 	} {
 		t.Run(name, func(t *testing.T) {
 			e := newEnv(t)
@@ -372,8 +384,9 @@ func TestRetentionExpiresItemWhoseFolderIsGone(t *testing.T) {
 	ctx := context.Background()
 	setDefaultDays(t, e, 1)
 	id := e.addItem(t, "Item", map[string]string{"a.txt": "a"})
-	// The root marker shows the volume is there, even with nothing else in it.
 	require.NoError(t, os.RemoveAll(filepath.Join(e.root, "Item")))
+	// Something else in the root shows the volume is there.
+	require.NoError(t, os.WriteFile(filepath.Join(e.root, "notes.txt"), []byte("x"), 0o644))
 
 	*e.clock = e.now.Add(48 * time.Hour)
 	n, err := e.svc.ApplyRetention(ctx)
@@ -423,24 +436,45 @@ func TestListFilter(t *testing.T) {
 	assert.Len(t, all, 2)
 }
 
-func TestDeleteRefusesSymlinkedFolders(t *testing.T) {
+func TestDeleteRefusesSymlinkedFolder(t *testing.T) {
 	e := newEnv(t)
 	ctx := context.Background()
 	downloads := t.TempDir()
 	victim := filepath.Join(downloads, "keep.bin")
 	require.NoError(t, os.WriteFile(victim, []byte("x"), 0o644))
-	require.NoError(t, os.WriteFile(filepath.Join(downloads, "a.txt"), []byte("a"), 0o644))
 	id := e.addItem(t, "Item", map[string]string{"a.txt": "a"})
 
-	// The folder itself is a symlink to a download client directory, stored
-	// directly or reached by name from a nested path.
+	// The folder itself is a symlink to a download client directory.
 	link := filepath.Join(e.root, "link")
 	require.NoError(t, os.Symlink(downloads, link))
-	require.NoError(t, os.Symlink(downloads, filepath.Join(e.root, "hop")))
-	for _, folder := range []string{link, filepath.Join(e.root, "hop", "link")} {
-		_, err := e.db.Exec("UPDATE library_items SET folder = ? WHERE id = ?", folder, id)
-		require.NoError(t, err)
-		require.ErrorIs(t, e.svc.Delete(ctx, id), ErrUnsafePath, folder)
-	}
+	_, err := e.db.Exec("UPDATE library_items SET folder = ? WHERE id = ?", link, id)
+	require.NoError(t, err)
+	require.ErrorIs(t, e.svc.Delete(ctx, id), ErrUnsafePath)
+	rec := httptest.NewRecorder()
+	it, err := e.svc.Get(ctx, id)
+	require.NoError(t, err)
+	require.ErrorIs(t, e.svc.Download(rec, httptest.NewRequest("GET", "/dl", nil), it), ErrUnsafePath)
 	assert.FileExists(t, victim)
+}
+
+func TestRootUnmounted(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	check := func(root string) bool {
+		t.Helper()
+		got, err := RootUnmounted(ctx, e.q, root)
+		require.NoError(t, err)
+		return got
+	}
+	assert.False(t, check(e.root), "an empty root with no items is a fresh library")
+	assert.True(t, check(filepath.Join(e.root, "missing")))
+	file := filepath.Join(t.TempDir(), "file")
+	require.NoError(t, os.WriteFile(file, nil, 0o644))
+	assert.True(t, check(file))
+
+	e.addItem(t, "Item", map[string]string{"a.txt": "a"})
+	assert.False(t, check(e.root))
+	require.NoError(t, os.RemoveAll(filepath.Join(e.root, "Item")))
+	assert.True(t, check(e.root), "empty while an item is recorded in it")
+	assert.False(t, check(t.TempDir()), "items elsewhere don't count")
 }
