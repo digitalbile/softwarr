@@ -2,6 +2,7 @@ package requests
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -249,9 +250,10 @@ func TestWorkerGrabStaleURLFails(t *testing.T) {
 	require.NoError(t, we.w.Tick(context.Background()))
 
 	got := we.get(t, req.ID, Failed)
-	assert.Contains(t, got.Error, "404")
-	assert.Contains(t, got.Error, srv.URL+"/gone")
-	assert.NotContains(t, got.Error, "secret")
+	assert.Equal(t, "The download couldn't be started. An admin has the details.", got.Error)
+	assert.Contains(t, got.ErrorDetail, "404")
+	assert.Contains(t, got.ErrorDetail, srv.URL+"/gone")
+	assert.NotContains(t, got.ErrorDetail, "secret")
 	assert.Empty(t, we.fc.adds)
 	assert.True(t, hasNotification(we.notifications(t, we.user.UserID), notify.EvRequestFailed))
 	assert.True(t, hasNotification(we.notifications(t, we.admin.UserID), notify.EvRequestFailed))
@@ -420,16 +422,58 @@ func TestWorkerUsesPathMapping(t *testing.T) {
 
 func TestWorkerImportErrorFails(t *testing.T) {
 	we := newWorkerEnv(t)
+	hooks := make(chan map[string]any, 1)
+	receiver := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		hooks <- body
+	}))
+	defer receiver.Close()
+	_, err := we.n.CreateWebhook(context.Background(), notify.WebhookInput{
+		Name: "hook", URL: receiver.URL, Events: []string{notify.EvRequestFailed}, Enabled: true,
+	})
+	require.NoError(t, err)
 	req := we.downloading(t, "a")
-	it := completedItem(t, t.TempDir(), "/nowhere")
+	it := completedItem(t, t.TempDir(), "/nowhere/downloads")
 	we.fc.setItem(it)
 
 	require.NoError(t, we.w.Tick(context.Background()))
 	require.NoError(t, we.w.Tick(context.Background()))
 
+	const userMsg = "The download finished but couldn't be added to the library. An admin has the details."
 	got := we.get(t, req.ID, Failed)
-	assert.NotEmpty(t, got.Error)
-	assert.True(t, hasNotification(we.notifications(t, we.user.UserID), notify.EvRequestFailed))
+	assert.Equal(t, userMsg, got.Error)
+	assert.Contains(t, got.ErrorDetail, "Importing from /nowhere/downloads failed")
+
+	// The requester sees the plain message, and no paths.
+	mine, err := we.svc.Get(context.Background(), we.user, req.ID)
+	require.NoError(t, err)
+	b, err := json.Marshal(mine)
+	require.NoError(t, err)
+	assert.NotContains(t, string(b), "/nowhere")
+	assert.NotContains(t, string(b), "errorDetail")
+	list, err := we.svc.List(context.Background(), we.user, true)
+	require.NoError(t, err)
+	b, err = json.Marshal(list)
+	require.NoError(t, err)
+	assert.NotContains(t, string(b), "/nowhere")
+
+	userNotes := we.notifications(t, we.user.UserID)
+	require.True(t, hasNotification(userNotes, notify.EvRequestFailed))
+	for _, n := range userNotes {
+		assert.NotContains(t, n.Message, "/nowhere")
+	}
+	adminNotes := we.notifications(t, we.admin.UserID)
+	require.True(t, hasNotification(adminNotes, notify.EvRequestFailed))
+	assert.Contains(t, adminNotes[0].Message, "/nowhere/downloads")
+
+	select {
+	case body := <-hooks:
+		assert.Equal(t, userMsg, body["error"])
+		assert.NotContains(t, body["message"], "/nowhere")
+	case <-time.After(5 * time.Second):
+		t.Fatal("no webhook")
+	}
 }
 
 func TestWorkerClientMissingFails(t *testing.T) {
@@ -450,10 +494,13 @@ func TestWorkerRetryReattaches(t *testing.T) {
 	we.fc.setItem(downloadclient.Item{State: downloadclient.StateError, Message: "Tracker is down."})
 	require.NoError(t, we.w.Tick(context.Background()))
 	got := we.get(t, req.ID, Failed)
-	assert.Equal(t, "Tracker is down.", got.Error)
+	assert.Equal(t, "The download client reported an error. An admin has the details.", got.Error)
+	assert.Equal(t, "Tracker is down.", got.ErrorDetail)
 
-	_, err := we.svc.Retry(context.Background(), we.admin, req.ID)
+	got, err := we.svc.Retry(context.Background(), we.admin, req.ID)
 	require.NoError(t, err)
+	assert.Empty(t, got.Error)
+	assert.Empty(t, got.ErrorDetail, "the detail goes with the error")
 	we.fc.setItem(downloadclient.Item{State: downloadclient.StateDownloading, Progress: 0.5})
 	require.NoError(t, we.w.Tick(context.Background()))
 

@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -280,4 +281,31 @@ func TestApproveFailedRequestWithReplacement(t *testing.T) {
 	got := decode[requestBody](t, resp)
 	assert.Equal(t, "approved", got.Status)
 	assert.Equal(t, "b", got.Release["title"])
+}
+
+func TestRequestErrorDetailIsForAdminsOnly(t *testing.T) {
+	ts := newTestServer(t)
+	ts.loginAsOwner()
+	uc := ts.newClient()
+	user := uc.loginAsUser()
+	r, err := ts.DB.Exec(`INSERT INTO requests (requester_id, status, release, release_key, display_title, error, error_detail, created_at, updated_at)
+		VALUES (?, 'failed', '{"title":"Thing","protocol":"torrent"}', 'k', 'Thing', 'The download finished but couldn''t be added to the library. An admin has the details.', 'Importing from /downloads/Thing failed: permission denied', 1, 1)`, user.ID)
+	require.NoError(t, err)
+	id, _ := r.LastInsertId()
+
+	for _, path := range []string{"/api/v1/requests", "/api/v1/requests?all=1", "/api/v1/requests/" + itoa(id)} {
+		resp := uc.do("GET", path, nil)
+		require.Equal(t, http.StatusOK, resp.StatusCode, path)
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		assert.Contains(t, string(body), "An admin has the details.", path)
+		assert.NotContains(t, string(body), "/downloads", path)
+		assert.NotContains(t, string(body), "errorDetail", path)
+	}
+
+	got := decode[map[string]any](t, ts.do("GET", "/api/v1/requests/"+itoa(id), nil))
+	assert.Equal(t, "Importing from /downloads/Thing failed: permission denied", got["errorDetail"])
+	act := decode[[]map[string]any](t, ts.do("GET", "/api/v1/activity", nil))
+	require.Len(t, act, 1)
+	assert.Equal(t, "Importing from /downloads/Thing failed: permission denied", act[0]["errorDetail"])
 }

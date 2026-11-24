@@ -102,6 +102,8 @@ export interface Request {
   displayTitle: string
   denyReason: string
   error: string
+  // Only sent to admins: the full error behind error.
+  errorDetail?: string
   progress: number
   libraryItemId: number | null
   createdAt: string
@@ -116,6 +118,7 @@ export interface Activity {
   progress: number
   stalled: boolean
   error: string
+  errorDetail?: string
   updatedAt: string
 }
 

@@ -28,6 +28,7 @@ UPDATE requests SET
     display_title = sqlc.arg(display_title),
     deny_reason = sqlc.arg(deny_reason),
     error = sqlc.arg(error),
+    error_detail = sqlc.arg(error_detail),
     client_id = sqlc.arg(client_id),
     client_item_id = sqlc.arg(client_item_id),
     progress = sqlc.arg(progress),

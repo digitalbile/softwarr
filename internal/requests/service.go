@@ -147,7 +147,7 @@ func (s *Service) Create(ctx context.Context, p auth.Principal, rel prowlarr.Rel
 			Payload: map[string]any{"requestId": id, "title": req.Release.Title, "requester": p.Username},
 		})
 	}
-	return req, nil
+	return forViewer(p, req), nil
 }
 
 func (s *Service) Approve(ctx context.Context, p auth.Principal, id int64, o ApproveOpts) (Request, error) {
@@ -256,7 +256,7 @@ func (s *Service) Cancel(ctx context.Context, p auth.Principal, id int64) (Reque
 		return Request{}, ErrNotFound
 	}
 	req, err := s.transition(ctx, id, ActCancel, nil)
-	return req, conflictIfInvalid(err)
+	return forViewer(p, req), conflictIfInvalid(err)
 }
 
 func (s *Service) Abandon(ctx context.Context, p auth.Principal, id int64) (Request, error) {
@@ -277,7 +277,15 @@ func (s *Service) Get(ctx context.Context, p auth.Principal, id int64) (Request,
 	if !p.IsAdmin && req.RequesterID != p.UserID {
 		return Request{}, ErrNotFound
 	}
-	return req, nil
+	return forViewer(p, req), nil
+}
+
+// forViewer hides what only admins may see.
+func forViewer(p auth.Principal, r Request) Request {
+	if !p.IsAdmin {
+		r.ErrorDetail = ""
+	}
+	return r
 }
 
 // List returns the caller's requests, or everyone's when all is set and the
@@ -307,7 +315,7 @@ func (s *Service) List(ctx context.Context, p auth.Principal, all bool) ([]Reque
 		if err != nil {
 			return nil, err
 		}
-		out = append(out, req)
+		out = append(out, forViewer(p, req))
 	}
 	return out, nil
 }
@@ -341,13 +349,16 @@ func (s *Service) apply(ctx context.Context, q *dbq.Queries, id int64, a Action,
 	}
 	u := dbq.UpdateRequestParams{
 		Status: string(to), Release: row.Release, ReleaseKey: row.ReleaseKey, OriginalRelease: row.OriginalRelease,
-		DisplayTitle: row.DisplayTitle, DenyReason: row.DenyReason, Error: row.Error,
+		DisplayTitle: row.DisplayTitle, DenyReason: row.DenyReason, Error: row.Error, ErrorDetail: row.ErrorDetail,
 		ClientID: row.ClientID, ClientItemID: row.ClientItemID, Progress: row.Progress,
 		LastProgressAt: row.LastProgressAt, ApprovedBy: row.ApprovedBy, LibraryItemID: row.LibraryItemID,
 		UpdatedAt: s.now().Unix(), ID: id, FromStatus: row.Status,
 	}
 	if mutate != nil {
 		mutate(&u)
+	}
+	if u.Error == "" {
+		u.ErrorDetail = sql.NullString{} // a cleared error takes its detail with it
 	}
 	n, err := q.UpdateRequest(ctx, u)
 	if db.IsUniqueViolation(err) {
@@ -395,7 +406,7 @@ func toRequest(r dbq.GetRequestRow) (Request, error) {
 	out := Request{
 		ID: r.ID, RequesterID: r.RequesterID, Requester: r.Requester, Status: Status(r.Status),
 		Comment: r.Comment, DisplayTitle: r.DisplayTitle, DenyReason: r.DenyReason, Error: r.Error,
-		Progress: r.Progress, CreatedAt: time.Unix(r.CreatedAt, 0).UTC(), UpdatedAt: time.Unix(r.UpdatedAt, 0).UTC(),
+		ErrorDetail: r.ErrorDetail.String, Progress: r.Progress, CreatedAt: time.Unix(r.CreatedAt, 0).UTC(), UpdatedAt: time.Unix(r.UpdatedAt, 0).UTC(),
 	}
 	var err error
 	if out.Release, err = prowlarr.UnmarshalStored([]byte(r.Release)); err != nil {
