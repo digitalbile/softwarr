@@ -41,7 +41,7 @@ func NewBroker() *Broker {
 }
 
 // Subscribe registers a subscriber. The returned cancel func is idempotent and
-// does not close the channel.
+// does not close the channel; only DisconnectUser does.
 func (b *Broker) Subscribe(userID int64, isAdmin bool) (<-chan Message, func()) {
 	s := &subscriber{userID: userID, isAdmin: isAdmin, ch: make(chan Message, subscriberBuffer)}
 	b.mu.Lock()
@@ -51,6 +51,20 @@ func (b *Broker) Subscribe(userID int64, isAdmin bool) (<-chan Message, func()) 
 		b.mu.Lock()
 		delete(b.subs, s)
 		b.mu.Unlock()
+	}
+}
+
+// DisconnectUser ends every stream of userID by closing its channels, so the
+// client reconnects and subscribes again with its current role. Call it when
+// a user's role, status or sessions change.
+func (b *Broker) DisconnectUser(userID int64) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	for s := range b.subs {
+		if s.userID == userID {
+			delete(b.subs, s)
+			close(s.ch)
+		}
 	}
 }
 

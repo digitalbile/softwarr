@@ -35,6 +35,31 @@ func TestSessionsDeleteExpiredKeepsLiveOnes(t *testing.T) {
 	assert.ErrorIs(t, err, ErrNoSession)
 }
 
+func TestSessionsCheckDoesNotSlide(t *testing.T) {
+	d, q := testutil.NewDB(t)
+	ctx := context.Background()
+	u, err := NewUsers(d, q).CreateLocal(ctx, "sam", "", "correct horse", false)
+	require.NoError(t, err)
+	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	s := NewSessions(q, func() time.Time { return now })
+	tok, expires, err := s.Create(ctx, u.ID)
+	require.NoError(t, err)
+	now = now.Add(20 * 24 * time.Hour) // past the point Lookup would slide
+
+	id, err := s.Check(ctx, tok)
+	require.NoError(t, err)
+	assert.Equal(t, u.ID, id)
+	var stored int64
+	require.NoError(t, d.QueryRow(`SELECT expires_at FROM sessions`).Scan(&stored))
+	assert.Equal(t, expires.Unix(), stored)
+
+	now = now.Add(11 * 24 * time.Hour)
+	_, err = s.Check(ctx, tok)
+	assert.ErrorIs(t, err, ErrNoSession)
+	_, err = s.Check(ctx, "nope")
+	assert.ErrorIs(t, err, ErrNoSession)
+}
+
 func TestSessionsPurgeRunsAtStart(t *testing.T) {
 	d, q := testutil.NewDB(t)
 	ctx, cancel := context.WithCancel(context.Background())

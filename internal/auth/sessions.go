@@ -84,6 +84,22 @@ func (s *Sessions) Lookup(ctx context.Context, token string) (userID int64, expi
 	return row.UserID, expires, extended, nil
 }
 
+// Check returns the session's user without sliding its expiry. Unknown and
+// expired tokens return ErrNoSession.
+func (s *Sessions) Check(ctx context.Context, token string) (int64, error) {
+	row, err := s.q.GetSession(ctx, hashToken(token))
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, ErrNoSession
+	}
+	if err != nil {
+		return 0, err
+	}
+	if !time.Unix(row.ExpiresAt, 0).After(s.now()) {
+		return 0, ErrNoSession
+	}
+	return row.UserID, nil
+}
+
 func (s *Sessions) Delete(ctx context.Context, token string) error {
 	return s.q.DeleteSession(ctx, hashToken(token))
 }

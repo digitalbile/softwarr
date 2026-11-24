@@ -2,13 +2,16 @@ package httpapi
 
 import (
 	"bufio"
+	"context"
 	"io"
 	"net/http"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/digitalbile/softwarr/internal/auth"
 	"github.com/digitalbile/softwarr/internal/events"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -83,5 +86,132 @@ func TestSSEEndpointStopsOnShutdown(t *testing.T) {
 	case <-done:
 	case <-time.After(3 * time.Second):
 		t.Fatal("stream still open after shutdown signal")
+	}
+}
+
+// streamEvents reads event names from an SSE body until it ends. The channel
+// closes at EOF.
+func streamEvents(body io.Reader) <-chan string {
+	out := make(chan string, 16)
+	go func() {
+		defer close(out)
+		sc := bufio.NewScanner(body)
+		for sc.Scan() {
+			if name, ok := strings.CutPrefix(sc.Text(), "event: "); ok {
+				out <- name
+			}
+		}
+	}()
+	return out
+}
+
+func waitClosed(t *testing.T, evs <-chan string) {
+	t.Helper()
+	deadline := time.After(3 * time.Second)
+	for {
+		select {
+		case _, ok := <-evs:
+			if !ok {
+				return
+			}
+		case <-deadline:
+			t.Fatal("stream still open")
+		}
+	}
+}
+
+func newAdminClient(t *testing.T, ts *testServer, name string) (*client, auth.User) {
+	t.Helper()
+	u, err := ts.Deps.Users.CreateLocal(context.Background(), name, "", testPassword, true)
+	require.NoError(t, err)
+	c := ts.newClient()
+	c.login(name, testPassword)
+	return c, u
+}
+
+func TestSSEStreamEndsWhenAdminIsDemoted(t *testing.T) {
+	ts := newTestServer(t)
+	ts.loginAsOwner()
+	bc, bob := newAdminClient(t, ts, "bob")
+	resp := bc.do("GET", "/api/v1/events", nil)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	evs := streamEvents(resp.Body)
+
+	resp = ts.do("PATCH", "/api/v1/users/"+itoa(bob.ID), map[string]any{"isAdmin": false})
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	waitClosed(t, evs)
+
+	// The browser reconnects and now only gets what a regular user gets.
+	resp = bc.do("GET", "/api/v1/events", nil)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	evs = streamEvents(resp.Body)
+	ts.Deps.Broker.Publish(events.Message{Type: events.TypeHealth, Data: "admins only", Admins: true})
+	ts.Deps.Broker.Publish(events.Message{Type: events.TypeNotification, Data: "for bob", UserIDs: []int64{bob.ID}})
+	select {
+	case name := <-evs:
+		assert.Equal(t, events.TypeNotification, name)
+	case <-time.After(3 * time.Second):
+		t.Fatal("no event")
+	}
+}
+
+func TestSSEStreamEndsWhenUserIsDisabledOrDeleted(t *testing.T) {
+	ts := newTestServer(t)
+	ts.loginAsOwner()
+	for _, act := range []func(id int64) *http.Response{
+		func(id int64) *http.Response {
+			return ts.do("PATCH", "/api/v1/users/"+itoa(id), map[string]any{"status": "disabled"})
+		},
+		func(id int64) *http.Response { return ts.do("DELETE", "/api/v1/users/"+itoa(id), nil) },
+	} {
+		c, u := newAdminClient(t, ts, "bob"+itoa(time.Now().UnixNano()))
+		resp := c.do("GET", "/api/v1/events", nil)
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+		evs := streamEvents(resp.Body)
+		require.Less(t, act(u.ID).StatusCode, 300)
+		waitClosed(t, evs)
+	}
+}
+
+func TestSSEStreamEndsWhenPasswordChanges(t *testing.T) {
+	ts := newTestServer(t)
+	ts.loginAsOwner()
+	other := ts.newClient()
+	other.login("owner", testPassword)
+	resp := other.do("GET", "/api/v1/events", nil)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	evs := streamEvents(resp.Body)
+
+	resp = ts.do("POST", "/api/v1/auth/password", map[string]string{"current": testPassword, "new": "a brand new one"})
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	waitClosed(t, evs)
+	assert.Equal(t, http.StatusUnauthorized, other.do("GET", "/api/v1/events", nil).StatusCode)
+}
+
+func TestSSEStreamRechecksSessionOnPing(t *testing.T) {
+	ts := newTestServer(t)
+	ts.loginAsOwner()
+	for name, change := range map[string]func(id int64){
+		"demoted in the database": func(id int64) {
+			_, err := ts.DB.Exec(`UPDATE users SET is_admin = 0 WHERE id = ?`, id)
+			require.NoError(t, err)
+		},
+		"session removed": func(id int64) {
+			_, err := ts.DB.Exec(`DELETE FROM sessions WHERE user_id = ?`, id)
+			require.NoError(t, err)
+		},
+		"disabled": func(id int64) {
+			_, err := ts.DB.Exec(`UPDATE users SET status = 'disabled' WHERE id = ?`, id)
+			require.NoError(t, err)
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			c, u := newAdminClient(t, ts, "u"+itoa(time.Now().UnixNano()))
+			resp := c.do("GET", "/api/v1/events", nil)
+			require.Equal(t, http.StatusOK, resp.StatusCode)
+			evs := streamEvents(resp.Body)
+			change(u.ID)
+			waitClosed(t, evs)
+		})
 	}
 }
