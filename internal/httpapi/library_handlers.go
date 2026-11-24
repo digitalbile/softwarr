@@ -26,7 +26,7 @@ func writeLibraryError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusBadRequest, err.Error())
 	case errors.Is(err, library.ErrFilesMissing):
 		writeError(w, http.StatusGone, err.Error())
-	case errors.Is(err, library.ErrFolderMissing):
+	case errors.Is(err, library.ErrFolderMissing), errors.Is(err, library.ErrFolderNotConfirmed):
 		writeError(w, http.StatusConflict, err.Error())
 	case errors.Is(err, library.ErrUnsafePath):
 		slog.Warn("library item folder refused", "err", err)
