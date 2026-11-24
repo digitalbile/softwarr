@@ -206,3 +206,59 @@ test('bell shows unread count and marks all as read', async () => {
   await userEvent.click(await screen.findByRole('button', { name: 'Mark all as read', hidden: true }))
   await waitFor(() => expect(marked).toEqual({ all: true }))
 })
+
+test('a stream the browser gave up on is reopened with a backoff', async () => {
+  signedInAs()
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'], shouldAdvanceTime: true })
+  try {
+    renderApp('/search')
+    await screen.findByRole('heading', { name: 'Search' })
+    await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1))
+    const latest = () => FakeEventSource.instances[FakeEventSource.instances.length - 1]
+
+    // A dropped connection the browser is still retrying is left alone.
+    latest().emit('error')
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(FakeEventSource.instances).toHaveLength(1)
+
+    latest().fail()
+    expect(latest().closed).toBe(true)
+    await vi.advanceTimersByTimeAsync(1900)
+    expect(FakeEventSource.instances).toHaveLength(1)
+    await vi.advanceTimersByTimeAsync(200)
+    expect(FakeEventSource.instances).toHaveLength(2)
+
+    // It fails again before opening: the wait doubles.
+    latest().fail()
+    await vi.advanceTimersByTimeAsync(2100)
+    expect(FakeEventSource.instances).toHaveLength(2)
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(FakeEventSource.instances).toHaveLength(3)
+
+    // Once a stream opens, the next reopen waits the short delay again.
+    latest().open()
+    latest().fail()
+    await vi.advanceTimersByTimeAsync(2100)
+    expect(FakeEventSource.instances).toHaveLength(4)
+  } finally {
+    vi.useRealTimers()
+  }
+})
+
+test('a closed stream for a signed-out user goes to login without reopening', async () => {
+  signedInAs()
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'], shouldAdvanceTime: true })
+  try {
+    renderApp('/search')
+    await screen.findByRole('heading', { name: 'Search' })
+    await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1))
+    server.use(http.get('*/api/v1/auth/me', () => HttpResponse.json({ error: 'Sign in to continue.' }, { status: 401 })))
+
+    FakeEventSource.instances[0].fail()
+    expect(await screen.findByText('Sign in to softwarr')).toBeInTheDocument()
+    await vi.advanceTimersByTimeAsync(60000)
+    expect(FakeEventSource.instances).toHaveLength(1)
+  } finally {
+    vi.useRealTimers()
+  }
+})
