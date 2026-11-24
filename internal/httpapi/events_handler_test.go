@@ -215,3 +215,30 @@ func TestSSEStreamRechecksSessionOnPing(t *testing.T) {
 		})
 	}
 }
+
+func TestPasswordChangeDisconnectsAfterNewSession(t *testing.T) {
+	ts := newTestServer(t)
+	owner := ts.loginAsOwner()
+	ch, cancel := ts.Deps.Broker.Subscribe(owner.ID, true)
+	defer cancel()
+	// When the stream is told to reconnect, the new session must already
+	// exist, or the browser's reconnect fails and the stream stays off.
+	sessions := make(chan int, 1)
+	go func() {
+		for range ch {
+		}
+		var n int
+		_ = ts.DB.QueryRow(`SELECT COUNT(*) FROM sessions WHERE user_id = ?`, owner.ID).Scan(&n)
+		sessions <- n
+	}()
+
+	resp := ts.do("POST", "/api/v1/auth/password", map[string]string{"current": testPassword, "new": "a brand new one"})
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
+	select {
+	case n := <-sessions:
+		assert.Equal(t, 1, n)
+	case <-time.After(3 * time.Second):
+		t.Fatal("stream not disconnected")
+	}
+	assert.Equal(t, http.StatusOK, ts.do("GET", "/api/v1/auth/me", nil).StatusCode)
+}
