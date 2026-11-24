@@ -13,6 +13,10 @@ import (
 
 const defaultPingInterval = 25 * time.Second
 
+// testHookAfterSubscribe runs right after a stream subscribes; tests use it
+// to change the user at that moment.
+var testHookAfterSubscribe func()
+
 func (s *server) registerEventRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/events", requireUser(s.handleEvents))
 }
@@ -23,6 +27,9 @@ func (s *server) handleEvents(w http.ResponseWriter, r *http.Request) {
 
 	ch, cancel := s.Broker.Subscribe(p.UserID, p.IsAdmin)
 	defer cancel()
+	if testHookAfterSubscribe != nil {
+		testHookAfterSubscribe()
+	}
 
 	h := w.Header()
 	h.Set("Content-Type", "text/event-stream")
@@ -36,6 +43,11 @@ func (s *server) handleEvents(w http.ResponseWriter, r *http.Request) {
 			h.Del("X-Accel-Buffering")
 			writeError(w, http.StatusInternalServerError, "streaming is not supported")
 		}
+		return
+	}
+	// A demotion between authenticating this request and subscribing would
+	// have missed the disconnect, so check once now.
+	if !s.streamStillValid(r, p) {
 		return
 	}
 

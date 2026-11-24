@@ -242,3 +242,18 @@ func TestPasswordChangeDisconnectsAfterNewSession(t *testing.T) {
 	}
 	assert.Equal(t, http.StatusOK, ts.do("GET", "/api/v1/auth/me", nil).StatusCode)
 }
+
+func TestSSEStreamEndsWhenDemotedWhileSubscribing(t *testing.T) {
+	// Only the check at subscribe can end it within the test.
+	ts := newTestServerWith(t, "", func(d *Deps) { d.PingInterval = time.Hour })
+	ts.loginAsOwner()
+	bc, bob := newAdminClient(t, ts, "bob")
+	t.Cleanup(func() { testHookAfterSubscribe = nil })
+	testHookAfterSubscribe = func() {
+		_, err := ts.DB.Exec(`UPDATE users SET is_admin = 0 WHERE id = ?`, bob.ID)
+		require.NoError(t, err)
+	}
+	resp := bc.do("GET", "/api/v1/events", nil)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	waitClosed(t, streamEvents(resp.Body))
+}
