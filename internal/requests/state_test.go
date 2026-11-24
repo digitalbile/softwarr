@@ -29,12 +29,3 @@ func TestTransitionTable(t *testing.T) {
 		}
 	}
 }
-
-func TestIsOpen(t *testing.T) {
-	for _, s := range []Status{Pending, Approved, Downloading, Importing, Scanning} {
-		assert.True(t, IsOpen(s), s)
-	}
-	for _, s := range []Status{Available, Denied, Cancelled, Failed, Abandoned} {
-		assert.False(t, IsOpen(s), s)
-	}
-}

@@ -59,16 +59,6 @@ func Next(from Status, a Action) (Status, error) {
 	return "", ErrInvalidTransition
 }
 
-// IsOpen reports whether s counts as an open request. It matches the partial
-// unique index on requests.release_key.
-func IsOpen(s Status) bool {
-	switch s {
-	case Pending, Approved, Downloading, Importing, Scanning:
-		return true
-	}
-	return false
-}
-
 type Request struct {
 	ID              int64             `json:"id"`
 	RequesterID     int64             `json:"requesterId"`

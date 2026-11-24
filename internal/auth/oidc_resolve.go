@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/digitalbile/softwarr/internal/db"
 	"github.com/digitalbile/softwarr/internal/db/dbq"
 	"github.com/digitalbile/softwarr/internal/settings"
 )
@@ -215,7 +216,7 @@ func insertIdentity(ctx context.Context, q *dbq.Queries, userID int64, c Claims)
 	err := q.CreateIdentity(ctx, dbq.CreateIdentityParams{
 		UserID: userID, Issuer: c.Issuer, Subject: c.Subject, CreatedAt: time.Now().Unix(),
 	})
-	if err != nil && strings.Contains(err.Error(), "UNIQUE constraint failed") {
+	if db.IsUniqueViolation(err) {
 		if strings.Contains(err.Error(), "user_identities.user_id") {
 			return ErrAlreadyLinked
 		}
@@ -229,7 +230,7 @@ func syncAdmin(ctx context.Context, q *dbq.Queries, cfg settings.OIDC, c Claims,
 	if !applies {
 		return nil
 	}
-	return q.SetUserAdminFromClaim(ctx, dbq.SetUserAdminFromClaimParams{IsAdmin: b2i(isAdmin), ID: userID})
+	return q.SetUserAdminFromClaim(ctx, dbq.SetUserAdminFromClaimParams{IsAdmin: db.BoolInt(isAdmin), ID: userID})
 }
 
 // IsAdminByClaim reports whether raw grants admin under the configured claim.

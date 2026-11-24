@@ -18,6 +18,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/digitalbile/softwarr/internal/db"
 	"github.com/digitalbile/softwarr/internal/db/dbq"
 )
 
@@ -96,13 +97,6 @@ func validate(in WebhookInput) (WebhookInput, error) {
 	return in, nil
 }
 
-func b2i(b bool) int64 {
-	if b {
-		return 1
-	}
-	return 0
-}
-
 func (s *Service) ListWebhooks(ctx context.Context) ([]Webhook, error) {
 	rows, err := s.q.ListWebhooks(ctx)
 	if err != nil {
@@ -122,7 +116,7 @@ func (s *Service) CreateWebhook(ctx context.Context, in WebhookInput) (Webhook, 
 	}
 	evs, _ := json.Marshal(in.Events)
 	row, err := s.q.CreateWebhook(ctx, dbq.CreateWebhookParams{
-		Name: in.Name, Url: in.URL, Secret: in.Secret, Events: string(evs), Enabled: b2i(in.Enabled),
+		Name: in.Name, Url: in.URL, Secret: in.Secret, Events: string(evs), Enabled: db.BoolInt(in.Enabled),
 	})
 	if err != nil {
 		return Webhook{}, err
@@ -150,7 +144,7 @@ func (s *Service) UpdateWebhook(ctx context.Context, id int64, in WebhookInput) 
 	}
 	evs, _ := json.Marshal(in.Events)
 	row, err := s.q.UpdateWebhook(ctx, dbq.UpdateWebhookParams{
-		Name: in.Name, Url: in.URL, Secret: secret, Events: string(evs), Enabled: b2i(in.Enabled), ID: id,
+		Name: in.Name, Url: in.URL, Secret: secret, Events: string(evs), Enabled: db.BoolInt(in.Enabled), ID: id,
 	})
 	if err != nil {
 		return Webhook{}, err

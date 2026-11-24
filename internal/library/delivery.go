@@ -15,6 +15,7 @@ import (
 	"strings"
 
 	"github.com/digitalbile/softwarr/internal/db/dbq"
+	"github.com/digitalbile/softwarr/internal/fsutil"
 	"github.com/digitalbile/softwarr/internal/importer"
 )
 
@@ -58,19 +59,16 @@ func (s *Service) Download(w http.ResponseWriter, r *http.Request, it Item) erro
 	})
 }
 
-// Serve sends the item's files from folder: one archive-like file directly,
-// anything else as a stored zip. It stats every file first and returns
-// ErrFilesMissing before writing if any is gone.
-func Serve(w http.ResponseWriter, r *http.Request, folder string, it Item) error {
-	return serve(w, r, folder, it, nil)
-}
-
 type resolved struct {
 	rel  string
 	path string
 	info os.FileInfo
 }
 
+// serve sends the item's files from folder: one archive-like file directly,
+// anything else as a stored zip. It stats every file first and returns
+// ErrFilesMissing before writing if any is gone. onStart runs once the
+// response starts at byte 0 of a GET.
 func serve(w http.ResponseWriter, r *http.Request, folder string, it Item, onStart func()) error {
 	if len(it.Files) == 0 {
 		return ErrFilesMissing
@@ -78,7 +76,7 @@ func serve(w http.ResponseWriter, r *http.Request, folder string, it Item, onSta
 	files := make([]resolved, 0, len(it.Files))
 	for _, f := range it.Files {
 		p := filepath.Join(folder, filepath.FromSlash(f.Path))
-		if !within(folder, p) {
+		if !fsutil.Within(folder, p) {
 			return fmt.Errorf("%w: %q", ErrUnsafePath, f.Path)
 		}
 		// Lstat: a symlink in the folder is never followed.

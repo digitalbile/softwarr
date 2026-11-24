@@ -9,6 +9,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/digitalbile/softwarr/internal/db"
 	"github.com/digitalbile/softwarr/internal/db/dbq"
 )
 
@@ -72,13 +73,6 @@ func burnPassword(pw string) {
 	VerifyPassword(dummyHash, pw)
 }
 
-func b2i(b bool) int64 {
-	if b {
-		return 1
-	}
-	return 0
-}
-
 func (u *Users) toUser(ctx context.Context, q *dbq.Queries, r dbq.User) (User, error) {
 	hasOIDC, err := q.UserHasIdentity(ctx, r.ID)
 	if err != nil {
@@ -126,10 +120,10 @@ func mapUnique(err error) error {
 	if err == nil {
 		return nil
 	}
-	msg := err.Error()
-	if !strings.Contains(msg, "UNIQUE constraint failed") {
+	if !db.IsUniqueViolation(err) {
 		return err
 	}
+	msg := err.Error()
 	switch {
 	case strings.Contains(msg, "users.email") || strings.Contains(msg, "users_email_unique"):
 		return errEmailTaken
@@ -162,8 +156,8 @@ func (u *Users) create(ctx context.Context, q *dbq.Queries, username, email, pas
 		Username:     name,
 		Email:        nullEmail(email),
 		PasswordHash: hash,
-		IsOwner:      b2i(owner),
-		IsAdmin:      b2i(admin),
+		IsOwner:      db.BoolInt(owner),
+		IsAdmin:      db.BoolInt(admin),
 		Status:       "active",
 		CreatedAt:    time.Now().Unix(),
 	})
@@ -279,10 +273,10 @@ func (u *Users) Update(ctx context.Context, id int64, p UserPatch) (User, error)
 		ID: id, IsAdmin: row.IsAdmin, AutoApprove: row.AutoApprove, Status: row.Status, Email: row.Email,
 	}
 	if p.IsAdmin != nil {
-		args.IsAdmin = b2i(*p.IsAdmin)
+		args.IsAdmin = db.BoolInt(*p.IsAdmin)
 	}
 	if p.AutoApprove != nil {
-		args.AutoApprove = b2i(*p.AutoApprove)
+		args.AutoApprove = db.BoolInt(*p.AutoApprove)
 	}
 	if p.Status != nil {
 		args.Status = *p.Status

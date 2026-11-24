@@ -16,6 +16,7 @@ import (
 	"strings"
 
 	"github.com/digitalbile/softwarr/internal/downloadclient"
+	"github.com/digitalbile/softwarr/internal/fsutil"
 )
 
 type Mode string
@@ -75,15 +76,6 @@ func splitPath(p string) ([]string, error) {
 	return segs, nil
 }
 
-// within reports whether target is base or inside it.
-func within(base, target string) bool {
-	rel, err := filepath.Rel(base, target)
-	if err != nil {
-		return false
-	}
-	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && !filepath.IsAbs(rel)
-}
-
 // checkSource verifies the source stays inside base, is a regular file, and
 // that no component along the way is a symlink.
 func checkSource(base string, segs []string) (string, error) {
@@ -101,7 +93,7 @@ func checkSource(base string, segs []string) (string, error) {
 			return "", ErrUnsafePath
 		}
 	}
-	if !within(base, cur) {
+	if !fsutil.WithinOrEqual(base, cur) {
 		return "", ErrUnsafePath
 	}
 	return cur, nil
@@ -215,7 +207,7 @@ func Import(ctx context.Context, src Source, libraryRoot, releaseName string) (r
 			return Result{}, err
 		}
 		dst := filepath.Join(folder, filepath.Join(p.dest...))
-		if !within(folder, dst) || dst == folder {
+		if !fsutil.Within(folder, dst) {
 			return Result{}, ErrUnsafePath
 		}
 		if err = os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
