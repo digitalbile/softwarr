@@ -428,7 +428,7 @@ func (w *Worker) importDownload(ctx context.Context, row dbq.Request) error {
 // request before any file is placed. A request that already claimed a folder,
 // in an attempt whose files were placed but never recorded, gets that folder
 // back emptied, so a retry never makes a numbered copy. Otherwise a new folder
-// is claimed.
+// is claimed. Either way the folder holds the item marker for the request.
 func (w *Worker) importFolder(ctx context.Context, row dbq.Request, rel prowlarr.Release, root string) (string, error) {
 	absRoot, err := filepath.Abs(root)
 	if err != nil {
@@ -436,8 +436,9 @@ func (w *Worker) importFolder(ctx context.Context, row dbq.Request, rel prowlarr
 	}
 	folder := ""
 	if row.ImportFolder.Valid && row.ImportFolder.String != "" {
-		prev := filepath.Join(absRoot, filepath.Base(row.ImportFolder.String))
-		ok, err := w.reusable(ctx, absRoot, prev, rel)
+		stored := filepath.Clean(row.ImportFolder.String)
+		prev := filepath.Join(absRoot, filepath.Base(stored))
+		ok, err := w.reusable(ctx, absRoot, prev, stored, row.ID, rel)
 		if err != nil {
 			return "", err
 		}
@@ -445,13 +446,13 @@ func (w *Worker) importFolder(ctx context.Context, row dbq.Request, rel prowlarr
 			if err := os.RemoveAll(prev); err != nil {
 				return "", err
 			}
-			if err := os.Mkdir(prev, 0o755); err == nil {
+			if err := importer.ClaimFolderAt(prev, row.ID); err == nil {
 				folder = prev
 			}
 		}
 	}
 	if folder == "" {
-		if folder, err = importer.ClaimFolder(absRoot, rel.Title); err != nil {
+		if folder, err = importer.ClaimFolder(absRoot, rel.Title, row.ID); err != nil {
 			return "", err
 		}
 	}
@@ -462,7 +463,7 @@ func (w *Worker) importFolder(ctx context.Context, row dbq.Request, rel prowlarr
 		err = ErrConflict
 	}
 	if err != nil {
-		os.Remove(folder) // still empty
+		os.RemoveAll(folder) // only the marker so far
 		return "", err
 	}
 	return folder, nil
@@ -470,16 +471,22 @@ func (w *Worker) importFolder(ctx context.Context, row dbq.Request, rel prowlarr
 
 // reusable reports whether an earlier attempt's folder can be emptied and
 // imported into again. It must be a plain folder directly in the root that no
-// library item uses. Moved (Usenet) files may be the only copy, so their
-// folder is never emptied.
-func (w *Worker) reusable(ctx context.Context, root, folder string, rel prowlarr.Release) (bool, error) {
+// library item uses, and either be exactly the folder the request saved or
+// hold the request's item marker: after the root moves, a folder of the same
+// name may belong to someone else. Moved (Usenet) files may be the only copy,
+// so their folder is never emptied.
+func (w *Worker) reusable(ctx context.Context, root, folder, stored string, requestID int64, rel prowlarr.Release) (bool, error) {
 	if rel.Protocol == "usenet" || filepath.Dir(folder) != root || !fsutil.Within(root, folder) {
 		return false, nil
 	}
-	if fi, err := os.Lstat(folder); err == nil && !fi.IsDir() {
+	fi, err := os.Lstat(folder)
+	switch {
+	case err == nil && !fi.IsDir():
 		return false, nil // a file or a symlink
-	} else if err != nil && !errors.Is(err, os.ErrNotExist) {
+	case err != nil && !errors.Is(err, os.ErrNotExist):
 		return false, err
+	case err == nil && folder != stored && !importer.FolderMarkedFor(folder, requestID):
+		return false, nil
 	}
 	used, err := w.q.ListAvailableLibraryFolders(ctx)
 	if err != nil {
