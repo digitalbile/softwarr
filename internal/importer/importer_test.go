@@ -2,6 +2,7 @@ package importer
 
 import (
 	"context"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -239,4 +240,46 @@ func TestImportMoveRestoreFailureKeepsFolder(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), filepath.Join(lib, "App"))
 	assert.FileExists(t, filepath.Join(lib, "App", "a.bin"))
+}
+
+// slowReader hands out small reads and runs after once the first read is done.
+type slowReader struct {
+	r     io.Reader
+	after func()
+	reads int
+}
+
+func (s *slowReader) Read(p []byte) (int, error) {
+	if len(p) > 4096 {
+		p = p[:4096]
+	}
+	n, err := s.r.Read(p)
+	s.reads++
+	if s.reads == 1 {
+		s.after()
+	}
+	time.Sleep(time.Millisecond)
+	return n, err
+}
+
+func TestImportCancelDuringCopyStopsAndCleansUp(t *testing.T) {
+	origLink, origSource := link, copySource
+	t.Cleanup(func() { link, copySource = origLink, origSource })
+	link = func(o, n string) error { return &os.LinkError{Op: "link", Old: o, New: n, Err: syscall.EXDEV} }
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	var sr *slowReader
+	copySource = func(r io.Reader) io.Reader {
+		sr = &slowReader{r: r, after: cancel}
+		return sr
+	}
+	src, lib := setup(t, map[string]string{"big.bin": strings.Repeat("x", 4<<20)})
+
+	start := time.Now()
+	_, err := Import(ctx, src, lib, "App")
+	require.ErrorIs(t, err, context.Canceled)
+	assert.Less(t, time.Since(start), 2*time.Second, "the copy stops soon after cancel")
+	assert.Less(t, sr.reads, 5)
+	ents, _ := os.ReadDir(lib)
+	assert.Empty(t, ents, "no folder or temp file is left")
 }
