@@ -115,6 +115,12 @@ func run() error {
 		defer close(retentionDone)
 		librarySvc.RunRetention(ctx)
 	}()
+	sessions := auth.NewSessions(q, time.Now)
+	purgeDone := make(chan struct{})
+	go func() {
+		defer close(purgeDone)
+		sessions.RunPurge(ctx, 24*time.Hour)
+	}()
 	checker := health.NewChecker(q, st, nil, nil, notifier, broker)
 	healthDone := make(chan struct{})
 	go func() {
@@ -127,7 +133,7 @@ func run() error {
 		Q:         q,
 		Settings:  st,
 		Users:     auth.NewUsers(database, q),
-		Sessions:  auth.NewSessions(q, time.Now),
+		Sessions:  sessions,
 		OIDC:      auth.NewOIDC(st, q, database, time.Now),
 		Broker:    broker,
 		Notify:    notifier,
@@ -161,9 +167,11 @@ func run() error {
 		<-workerDone
 		<-retentionDone
 		<-healthDone
+		<-purgeDone
 		return fmt.Errorf("server failed: %w", err)
 	}
 	<-drained
+	<-purgeDone
 	<-healthDone
 	<-retentionDone
 	<-workerDone // let an in-flight tick finish before the database closes
