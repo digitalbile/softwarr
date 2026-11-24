@@ -257,3 +257,21 @@ func TestSSEStreamEndsWhenDemotedWhileSubscribing(t *testing.T) {
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	waitClosed(t, streamEvents(resp.Body))
 }
+
+func TestUserUpdateDisconnectsEvenWhenSessionCleanupFails(t *testing.T) {
+	ts := newTestServerWith(t, "", func(d *Deps) { d.PingInterval = time.Hour })
+	ts.loginAsOwner()
+	bc, bob := newAdminClient(t, ts, "bob")
+	resp := bc.do("GET", "/api/v1/events", nil)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	evs := streamEvents(resp.Body)
+
+	st, err := ts.Deps.Settings.Get(context.Background())
+	require.NoError(t, err)
+	// Deleting bob's sessions will fail. The API key doesn't need a session.
+	_, err = ts.DB.Exec(`DROP TABLE sessions`)
+	require.NoError(t, err)
+	resp = ts.request("PATCH", "/api/v1/users/"+itoa(bob.ID), map[string]any{"status": "disabled"}, map[string]string{"X-Api-Key": st.APIKey})
+	require.Equal(t, http.StatusInternalServerError, resp.StatusCode)
+	waitClosed(t, evs)
+}
