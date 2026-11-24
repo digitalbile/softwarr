@@ -3,9 +3,11 @@ package library
 import (
 	"context"
 	"database/sql"
+	"maps"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 
@@ -55,7 +57,10 @@ func (e *env) addItem(t *testing.T, name string, files map[string]string) int64 
 	t.Helper()
 	folder := filepath.Join(e.root, name)
 	res := importer.Result{Folder: folder, Mode: importer.ModeHardlink}
-	for rel, content := range files {
+	// Sorted, so the stored file order (and which file a test removes first)
+	// is the same on every run.
+	for _, rel := range slices.Sorted(maps.Keys(files)) {
+		content := files[rel]
 		p := filepath.Join(folder, filepath.FromSlash(rel))
 		require.NoError(t, os.MkdirAll(filepath.Dir(p), 0o755))
 		require.NoError(t, os.WriteFile(p, []byte(content), 0o644))
