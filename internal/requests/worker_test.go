@@ -3,6 +3,7 @@ package requests
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -14,7 +15,6 @@ import (
 	"github.com/digitalbile/softwarr/internal/db/dbq"
 	"github.com/digitalbile/softwarr/internal/downloadclient"
 	"github.com/digitalbile/softwarr/internal/events"
-	"github.com/digitalbile/softwarr/internal/importer"
 	"github.com/digitalbile/softwarr/internal/notify"
 	"github.com/digitalbile/softwarr/internal/prowlarr"
 	"github.com/digitalbile/softwarr/internal/settings"
@@ -83,7 +83,6 @@ func newWorkerEnv(t *testing.T) workerEnv {
 	t.Helper()
 	e := newEnv(t)
 	lib := t.TempDir()
-	require.NoError(t, importer.PrepareRoot(lib))
 	e.setSettings(t, func(s *settings.Settings) { s.LibraryRoot = lib })
 	fc := &fakeClient{host: "qbit.lan"}
 	now := fixedNow
@@ -459,10 +458,13 @@ func TestWorkerImportLeavesAnotherItemsFolderAlone(t *testing.T) {
 	assert.DirExists(t, filepath.Join(we.library, "a (2)"))
 }
 
-// subdirs lists the folders in dir.
+// subdirs lists the folders in dir, if it exists.
 func subdirs(t *testing.T, dir string) []string {
 	t.Helper()
 	ents, err := os.ReadDir(dir)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
 	require.NoError(t, err)
 	var out []string
 	for _, e := range ents {
@@ -473,96 +475,105 @@ func subdirs(t *testing.T, dir string) []string {
 	return out
 }
 
-// importingAfterRootMove leaves a request importing with an import folder in
-// an old library root, then points the library at a new root.
-func importingAfterRootMove(t *testing.T, we workerEnv) (Request, string) {
+// importingAfterRootMove leaves a request importing whose earlier attempt
+// placed files in an old library root, then points the library at newRoot.
+func importingAfterRootMove(t *testing.T, we workerEnv, title, dl, newRoot string) (Request, string) {
 	t.Helper()
-	req := we.downloading(t, "a")
-	dl := t.TempDir()
+	req := we.downloading(t, title)
 	we.fc.setItem(completedItem(t, dl, dl))
 	require.NoError(t, we.w.Tick(context.Background()))
 	we.get(t, req.ID, Importing)
-	_, err := we.svc.db.Exec(`UPDATE requests SET import_folder = ? WHERE id = ?`, filepath.Join(t.TempDir(), "a"), req.ID)
+	old := filepath.Join(t.TempDir(), title)
+	require.NoError(t, os.Mkdir(old, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(old, "setup.dmg"), []byte("half"), 0o644))
+	_, err := we.svc.db.Exec(`UPDATE requests SET import_folder = ? WHERE id = ?`, old, req.ID)
 	require.NoError(t, err)
-	newRoot := t.TempDir()
-	require.NoError(t, importer.PrepareRoot(newRoot))
 	we.setSettings(t, func(s *settings.Settings) { s.LibraryRoot = newRoot })
-	return req, newRoot
+	return req, old
 }
 
 func TestWorkerImportWaitsForUnmountedRoot(t *testing.T) {
-	we := newWorkerEnv(t)
-	req := we.downloading(t, "a")
-	dl := t.TempDir()
-	we.fc.setItem(completedItem(t, dl, dl))
-	require.NoError(t, we.w.Tick(context.Background()))
-	we.get(t, req.ID, Importing)
-	// As if the volume went away and left a bare mount point.
-	require.NoError(t, os.Remove(filepath.Join(we.library, importer.RootMarker)))
+	for name, unmount := range map[string]func(t *testing.T, we workerEnv){
+		"root missing": func(t *testing.T, we workerEnv) { require.NoError(t, os.RemoveAll(we.library)) },
+		// A bare mount point while the library has items recorded in it.
+		"root empty with items recorded": func(t *testing.T, we workerEnv) {
+			_, err := we.svc.db.Exec(`INSERT INTO library_items (display_title, release_name, release_key, folder, imported_at) VALUES ('x', 'x', 'k', ?, 1)`,
+				filepath.Join(we.library, "Earlier"))
+			require.NoError(t, err)
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			we := newWorkerEnv(t)
+			req := we.downloading(t, "a")
+			dl := t.TempDir()
+			we.fc.setItem(completedItem(t, dl, dl))
+			require.NoError(t, we.w.Tick(context.Background()))
+			we.get(t, req.ID, Importing)
+			unmount(t, we)
 
-	require.NoError(t, we.w.Tick(context.Background()))
-	require.NoError(t, we.w.Tick(context.Background()))
-	got := we.get(t, req.ID, Importing)
-	assert.Equal(t, "Waiting for the library folder. An admin has the details.", got.Error)
-	assert.Contains(t, got.ErrorDetail, "looks unmounted")
-	mine, err := we.svc.Get(context.Background(), we.user, req.ID)
-	require.NoError(t, err)
-	assert.Empty(t, mine.ErrorDetail)
-	ents, err := os.ReadDir(we.library)
-	require.NoError(t, err)
-	assert.Empty(t, ents, "nothing is imported into the bare mount point")
-	assert.False(t, hasNotification(we.notifications(t, we.user.UserID), notify.EvRequestFailed))
+			require.NoError(t, we.w.Tick(context.Background()))
+			require.NoError(t, we.w.Tick(context.Background()))
+			got := we.get(t, req.ID, Importing)
+			assert.Equal(t, "Waiting for the library folder. An admin has the details.", got.Error)
+			assert.Contains(t, got.ErrorDetail, "looks unmounted")
+			mine, err := we.svc.Get(context.Background(), we.user, req.ID)
+			require.NoError(t, err)
+			assert.Empty(t, mine.ErrorDetail)
+			assert.Empty(t, subdirs(t, we.library), "nothing is imported into the bare mount point")
+			assert.False(t, hasNotification(we.notifications(t, we.user.UserID), notify.EvRequestFailed))
 
-	require.NoError(t, importer.PrepareRoot(we.library))
-	require.NoError(t, we.w.Tick(context.Background()))
-	got = we.assertImported(t, req.ID)
-	assert.Empty(t, got.Error)
-	assert.Empty(t, got.ErrorDetail)
+			// The volume is back.
+			require.NoError(t, os.MkdirAll(we.library, 0o755))
+			require.NoError(t, os.Mkdir(filepath.Join(we.library, "Earlier"), 0o755))
+			require.NoError(t, we.w.Tick(context.Background()))
+			got = we.assertImported(t, req.ID)
+			assert.Empty(t, got.Error)
+			assert.Empty(t, got.ErrorDetail)
+		})
+	}
 }
 
-func TestWorkerImportRedoLeavesUnmarkedFolderAfterRootMove(t *testing.T) {
+func TestWorkerImportRedoLeavesOldFolderAfterRootChange(t *testing.T) {
 	we := newWorkerEnv(t)
-	req, newRoot := importingAfterRootMove(t, we)
+	newRoot := t.TempDir()
+	req, old := importingAfterRootMove(t, we, "a", t.TempDir(), newRoot)
 	// Someone else's folder that happens to have the same name.
 	theirs := filepath.Join(newRoot, "a")
 	require.NoError(t, os.Mkdir(theirs, 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(theirs, "keep.bin"), []byte("x"), 0o644))
 
 	require.NoError(t, we.w.Tick(context.Background()))
-	got := we.get(t, req.ID, Available)
+	we.get(t, req.ID, Available)
 	assert.FileExists(t, filepath.Join(theirs, "keep.bin"))
+	assert.FileExists(t, filepath.Join(old, "setup.dmg"), "the old attempt's folder is left alone")
 	assert.Equal(t, filepath.Join(newRoot, "a (2)"), we.row(t, req.ID).ImportFolder.String)
-	require.NotNil(t, got.LibraryItemID)
 }
 
-func TestWorkerImportRedoReusesMarkedFolderAfterRootMove(t *testing.T) {
+func TestWorkerImportRedoAfterRootRepointedAtDownloads(t *testing.T) {
 	we := newWorkerEnv(t)
-	req, newRoot := importingAfterRootMove(t, we)
-	// The earlier attempt's folder, moved along with the root.
-	ours := filepath.Join(newRoot, "a")
-	require.NoError(t, os.Mkdir(ours, 0o755))
-	require.NoError(t, importer.MarkItemFolder(ours, req.ID))
-	require.NoError(t, os.WriteFile(filepath.Join(ours, "setup.dmg"), []byte("half"), 0o644))
+	// The download is dl/Thing, and the request is titled Thing too.
+	dl := t.TempDir()
+	req, old := importingAfterRootMove(t, we, "Thing", dl, dl)
 
 	require.NoError(t, we.w.Tick(context.Background()))
 	we.get(t, req.ID, Available)
-	assert.Equal(t, []string{"a"}, subdirs(t, newRoot))
-	b, err := os.ReadFile(filepath.Join(ours, "setup.dmg"))
+	b, err := os.ReadFile(filepath.Join(dl, "Thing", "setup.dmg"))
 	require.NoError(t, err)
-	assert.Equal(t, "binary", string(b))
+	assert.Equal(t, "binary", string(b), "the seeding copy is untouched")
+	assert.FileExists(t, filepath.Join(dl, "Thing", "readme.txt"))
+	assert.FileExists(t, filepath.Join(old, "setup.dmg"))
+	assert.Equal(t, filepath.Join(dl, "Thing (2)"), we.row(t, req.ID).ImportFolder.String)
 }
 
-func TestWorkerImportMarksFolderForRequest(t *testing.T) {
+func TestWorkerFirstImportIntoEmptyRoot(t *testing.T) {
 	we := newWorkerEnv(t)
+	assert.Empty(t, subdirs(t, we.library))
 	req := we.downloading(t, "a")
 	dl := t.TempDir()
 	we.fc.setItem(completedItem(t, dl, dl))
 	require.NoError(t, we.w.Tick(context.Background()))
 	require.NoError(t, we.w.Tick(context.Background()))
 	we.assertImported(t, req.ID)
-	folder := filepath.Join(we.library, "a")
-	assert.True(t, importer.FolderMarkedFor(folder, req.ID))
-	assert.False(t, importer.FolderMarkedFor(folder, req.ID+1))
 }
 
 func TestWorkerUsesPathMapping(t *testing.T) {
