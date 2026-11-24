@@ -53,7 +53,7 @@ type Checker struct {
 	timeout     time.Duration
 
 	mu   sync.Mutex
-	prev map[string]string // check id to level from the previous loop run
+	prev map[string]string // check id to level from the previous loop run; nil before the first
 }
 
 // NewChecker builds a Checker. n and b may be nil.
@@ -286,7 +286,9 @@ func (c *Checker) Loop(ctx context.Context, every time.Duration) {
 }
 
 // runOnce runs the checks, publishes the full list, and notifies admins about
-// checks that were not failing on the previous run.
+// checks that were not failing on the previous run. The first run after
+// startup only sets the baseline, so a restart doesn't repeat warnings for
+// checks that were already failing. The health page shows them either way.
 func (c *Checker) runOnce(ctx context.Context) {
 	checks := c.Run(ctx)
 	if ctx.Err() != nil {
@@ -303,7 +305,7 @@ func (c *Checker) runOnce(ctx context.Context) {
 	if c.b != nil {
 		c.b.Publish(events.Message{Type: events.TypeHealth, Data: checks, Admins: true})
 	}
-	if c.n == nil {
+	if c.n == nil || prev == nil {
 		return
 	}
 	for _, ch := range checks {

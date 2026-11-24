@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -171,13 +172,14 @@ func TestHealthOIDCUnreachable(t *testing.T) {
 
 func TestHealthLoopNotifiesOnlyOnNewFailures(t *testing.T) {
 	e := newEnv(t)
-	e.prowOK = false
 	ctx := context.Background()
 	admin, err := e.q.CreateUser(ctx, dbq.CreateUserParams{Username: "a", IsAdmin: 1, IsOwner: 1, Status: "active", CreatedAt: 1})
 	require.NoError(t, err)
 	ch, cancel := e.broker.Subscribe(admin.ID, true)
 	defer cancel()
 
+	e.c.runOnce(ctx)
+	e.prowOK = false
 	e.c.runOnce(ctx)
 	e.c.runOnce(ctx)
 	ns, err := e.q.ListNotifications(ctx, dbq.ListNotificationsParams{UserID: admin.ID, Column2: 0})
@@ -191,7 +193,7 @@ func TestHealthLoopNotifiesOnlyOnNewFailures(t *testing.T) {
 			healthMsgs++
 		}
 	}
-	assert.Equal(t, 2, healthMsgs)
+	assert.Equal(t, 3, healthMsgs)
 
 	// Recover, then fail again: a new notification.
 	e.prowOK = true
@@ -200,6 +202,33 @@ func TestHealthLoopNotifiesOnlyOnNewFailures(t *testing.T) {
 	e.c.runOnce(ctx)
 	ns, _ = e.q.ListNotifications(ctx, dbq.ListNotificationsParams{UserID: admin.ID, Column2: 0})
 	assert.Len(t, ns, 2)
+}
+
+func TestHealthLoopFirstRunSetsBaseline(t *testing.T) {
+	e := newEnv(t)
+	e.prowOK = false
+	ctx := context.Background()
+	admin, err := e.q.CreateUser(ctx, dbq.CreateUserParams{Username: "a", IsAdmin: 1, IsOwner: 1, Status: "active", CreatedAt: 1})
+	require.NoError(t, err)
+	ch, cancel := e.broker.Subscribe(admin.ID, true)
+	defer cancel()
+
+	// A check already failing at startup was failing before the restart
+	// too, so admins aren't told again.
+	e.c.runOnce(ctx)
+	ns, err := e.q.ListNotifications(ctx, dbq.ListNotificationsParams{UserID: admin.ID, Column2: 0})
+	require.NoError(t, err)
+	assert.Empty(t, ns)
+	require.Len(t, ch, 1, "the health page still gets the results")
+	assert.Equal(t, events.TypeHealth, (<-ch).Type)
+
+	// Library goes from OK to failing: one notification.
+	require.NoError(t, os.RemoveAll(e.root))
+	e.c.runOnce(ctx)
+	ns, err = e.q.ListNotifications(ctx, dbq.ListNotificationsParams{UserID: admin.ID, Column2: 0})
+	require.NoError(t, err)
+	require.Len(t, ns, 1)
+	assert.Contains(t, ns[0].Message, "library folder")
 }
 
 func TestScrubStripsQueryStrings(t *testing.T) {
@@ -243,6 +272,7 @@ func TestHealthLoopTimeoutDoesNotRenotify(t *testing.T) {
 	ctx := context.Background()
 	admin, err := e.q.CreateUser(ctx, dbq.CreateUserParams{Username: "a", IsAdmin: 1, IsOwner: 1, Status: "active", CreatedAt: 1})
 	require.NoError(t, err)
+	e.c.prev = map[string]string{"prowlarr": LevelOK} // Prowlarr was fine
 	e.c.runOnce(ctx)
 	e.c.runOnce(ctx)
 	m := byID(e.c.Run(ctx))
