@@ -14,6 +14,7 @@ import (
 	"github.com/digitalbile/softwarr/internal/db/dbq"
 	"github.com/digitalbile/softwarr/internal/events"
 	"github.com/digitalbile/softwarr/internal/fsutil"
+	"github.com/digitalbile/softwarr/internal/importer"
 	"github.com/digitalbile/softwarr/internal/notify"
 	"github.com/digitalbile/softwarr/internal/settings"
 )
@@ -28,6 +29,10 @@ var (
 	// anything else in the library root, most likely because the library
 	// volume isn't mounted. The item is left as it is.
 	ErrFolderMissing = errors.New("The library folder for this item is missing. Check that the library path is mounted.")
+	// ErrFolderNotConfirmed means the library root moved and the folder
+	// found in its place has no marker naming this item's request, so it may
+	// not be softwarr's. Nothing is removed.
+	ErrFolderNotConfirmed = errors.New("softwarr couldn't confirm that the folder for this item is its own, so it left it alone. Check the library folder in Settings.")
 )
 
 // File is one file of an item, relative to the item's folder.
@@ -55,8 +60,9 @@ type Item struct {
 	Files            []File     `json:"files"`
 	ExpiresAt        *time.Time `json:"expiresAt"`
 
-	// Folder and RequesterID are for the server only.
+	// Folder, RequestID and RequesterID are for the server only.
 	Folder      string `json:"-"`
+	RequestID   int64  `json:"-"`
 	RequesterID int64  `json:"-"`
 }
 
@@ -78,7 +84,7 @@ func toItem(r dbq.ListAvailableLibraryItemsRow, files []File, defaultDays int) I
 		ID: r.ID, Title: r.DisplayTitle, ReleaseName: r.ReleaseName, TotalSize: r.TotalSize,
 		Protocol: r.Protocol, Indexer: r.Indexer, Requester: r.Requester, Comment: r.Comment,
 		Approver: r.Approver, ImportMode: r.ImportMode, DownloadCount: int(r.DownloadCount),
-		ImportedAt: time.Unix(r.ImportedAt, 0), Files: files, Folder: r.Folder, RequesterID: r.RequesterID,
+		ImportedAt: time.Unix(r.ImportedAt, 0), Files: files, Folder: r.Folder, RequestID: r.RequestID, RequesterID: r.RequesterID,
 	}
 	if it.Files == nil {
 		it.Files = []File{}
@@ -285,9 +291,11 @@ func (s *Service) removeFolder(ctx context.Context, it Item) error {
 		return err
 	}
 	// After the root moves, a folder of the same name could be something
-	// else. Only remove it if it still holds one of the item's files.
-	if folder != filepath.Clean(it.Folder) && !holdsAnyFile(folder, it.Files) {
-		return fmt.Errorf("%w: %q doesn't hold this item's files", ErrUnsafePath, folder)
+	// else, such as the download client's seeding copy, which holds the very
+	// same file names. Only remove it if it carries this item's marker.
+	if folder != filepath.Clean(it.Folder) && !importer.FolderMarkedFor(folder, it.RequestID) {
+		slog.Warn("library: folder not confirmed as softwarr's, left in place", "id", it.ID, "folder", folder)
+		return ErrFolderNotConfirmed
 	}
 	return os.RemoveAll(folder)
 }
@@ -303,19 +311,6 @@ func rootMounted(root string) bool {
 	defer f.Close()
 	names, err := f.Readdirnames(1)
 	return err == nil && len(names) > 0
-}
-
-func holdsAnyFile(folder string, files []File) bool {
-	for _, f := range files {
-		p := filepath.Join(folder, filepath.FromSlash(f.Path))
-		if !fsutil.Within(folder, p) {
-			continue
-		}
-		if fi, err := os.Lstat(p); err == nil && fi.Mode().IsRegular() {
-			return true
-		}
-	}
-	return false
 }
 
 // ApplyRetention expires items past their retention and returns how many.

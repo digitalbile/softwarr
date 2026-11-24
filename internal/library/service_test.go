@@ -67,10 +67,59 @@ func (e *env) addItem(t *testing.T, name string, files map[string]string) int64 
 		res.Files = append(res.Files, downloadclient.File{Path: rel, Size: int64(len(content))})
 		res.TotalSize += int64(len(content))
 	}
+	// As the importer leaves it: marked as softwarr's, here with no request.
+	require.NoError(t, importer.MarkItemFolder(folder, 0))
 	rel := prowlarr.Release{GUID: name, Title: name, Indexer: "idx", Protocol: "torrent", InfoHash: name}
 	id, err := CreateItem(context.Background(), e.q, 0, name+" title", rel, res, e.now)
 	require.NoError(t, err)
 	return id
+}
+
+// repoint sets the library root to dir.
+func (e *env) repoint(t *testing.T, dir string) {
+	t.Helper()
+	cur, err := e.st.Get(context.Background())
+	require.NoError(t, err)
+	cur.LibraryRoot = dir
+	require.NoError(t, e.st.Save(context.Background(), cur))
+}
+
+func TestRootRepointedAtDownloadsLeavesSeedingFiles(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	setDefaultDays(t, e, 1)
+	// The importer strips the torrent's top folder, so the item's files are
+	// named exactly like the seeding copy's.
+	id := e.addItem(t, "Thing", map[string]string{"setup.dmg": "payload"})
+	downloads := t.TempDir()
+	seeding := filepath.Join(downloads, "Thing", "setup.dmg")
+	require.NoError(t, os.MkdirAll(filepath.Dir(seeding), 0o755))
+	require.NoError(t, os.WriteFile(seeding, []byte("payload"), 0o644))
+	e.repoint(t, downloads)
+
+	err := e.svc.Delete(ctx, id)
+	require.ErrorIs(t, err, ErrFolderNotConfirmed)
+	assert.Equal(t, "softwarr couldn't confirm that the folder for this item is its own, so it left it alone. Check the library folder in Settings.", err.Error())
+	*e.clock = e.now.Add(48 * time.Hour)
+	n, err := e.svc.ApplyRetention(ctx)
+	require.NoError(t, err)
+	assert.Zero(t, n)
+
+	assert.FileExists(t, seeding)
+	assert.Equal(t, "available", itemStatus(t, e, id))
+}
+
+func TestRootRepointedAtFolderMarkedForAnotherRequest(t *testing.T) {
+	e := newEnv(t)
+	id := e.addItem(t, "Thing", map[string]string{"a.txt": "a"})
+	other := t.TempDir()
+	theirs := filepath.Join(other, "Thing")
+	require.NoError(t, os.Mkdir(theirs, 0o755))
+	require.NoError(t, importer.MarkItemFolder(theirs, 42))
+	e.repoint(t, other)
+
+	require.ErrorIs(t, e.svc.Delete(context.Background(), id), ErrFolderNotConfirmed)
+	assert.DirExists(t, theirs)
 }
 
 func TestExpiresAt(t *testing.T) {
@@ -206,7 +255,7 @@ func TestDeleteRefusesFolderOutsideRoot(t *testing.T) {
 	require.NoError(t, os.Mkdir(filepath.Join(e.root, filepath.Base(outside)), 0o755))
 	_, err := e.db.Exec("UPDATE library_items SET folder = ? WHERE id = ?", outside, id)
 	require.NoError(t, err)
-	require.ErrorIs(t, e.svc.Delete(ctx, id), ErrUnsafePath, "a folder without the item's files is left alone")
+	require.ErrorIs(t, e.svc.Delete(ctx, id), ErrFolderNotConfirmed, "a folder softwarr can't show is its own is left alone")
 	assert.FileExists(t, victim)
 	assert.DirExists(t, e.root)
 	assert.DirExists(t, filepath.Join(e.root, "Item"))

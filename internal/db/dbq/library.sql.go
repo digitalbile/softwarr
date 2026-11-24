@@ -13,6 +13,7 @@ import (
 const getAvailableLibraryItem = `-- name: GetAvailableLibraryItem :one
 SELECT li.id, li.display_title, li.release_name, li.folder, li.total_size, li.protocol, li.indexer, li.import_mode,
        li.retention_days, li.imported_at, li.last_downloaded_at, li.download_count,
+       CAST(COALESCE(li.request_id, 0) AS INTEGER) AS request_id,
        CAST(COALESCE(r.requester_id, 0) AS INTEGER) AS requester_id,
        CAST(COALESCE(u.username, '') AS TEXT) AS requester,
        CAST(COALESCE(r.comment, '') AS TEXT) AS comment,
@@ -37,6 +38,7 @@ type GetAvailableLibraryItemRow struct {
 	ImportedAt       int64         `json:"imported_at"`
 	LastDownloadedAt sql.NullInt64 `json:"last_downloaded_at"`
 	DownloadCount    int64         `json:"download_count"`
+	RequestID        int64         `json:"request_id"`
 	RequesterID      int64         `json:"requester_id"`
 	Requester        string        `json:"requester"`
 	Comment          string        `json:"comment"`
@@ -59,6 +61,7 @@ func (q *Queries) GetAvailableLibraryItem(ctx context.Context, id int64) (GetAva
 		&i.ImportedAt,
 		&i.LastDownloadedAt,
 		&i.DownloadCount,
+		&i.RequestID,
 		&i.RequesterID,
 		&i.Requester,
 		&i.Comment,
@@ -195,6 +198,7 @@ func (q *Queries) ListAvailableLibraryFolders(ctx context.Context) ([]string, er
 const listAvailableLibraryItems = `-- name: ListAvailableLibraryItems :many
 SELECT li.id, li.display_title, li.release_name, li.folder, li.total_size, li.protocol, li.indexer, li.import_mode,
        li.retention_days, li.imported_at, li.last_downloaded_at, li.download_count,
+       CAST(COALESCE(li.request_id, 0) AS INTEGER) AS request_id,
        CAST(COALESCE(r.requester_id, 0) AS INTEGER) AS requester_id,
        CAST(COALESCE(u.username, '') AS TEXT) AS requester,
        CAST(COALESCE(r.comment, '') AS TEXT) AS comment,
@@ -220,6 +224,7 @@ type ListAvailableLibraryItemsRow struct {
 	ImportedAt       int64         `json:"imported_at"`
 	LastDownloadedAt sql.NullInt64 `json:"last_downloaded_at"`
 	DownloadCount    int64         `json:"download_count"`
+	RequestID        int64         `json:"request_id"`
 	RequesterID      int64         `json:"requester_id"`
 	Requester        string        `json:"requester"`
 	Comment          string        `json:"comment"`
@@ -248,6 +253,7 @@ func (q *Queries) ListAvailableLibraryItems(ctx context.Context) ([]ListAvailabl
 			&i.ImportedAt,
 			&i.LastDownloadedAt,
 			&i.DownloadCount,
+			&i.RequestID,
 			&i.RequesterID,
 			&i.Requester,
 			&i.Comment,
