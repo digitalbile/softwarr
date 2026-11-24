@@ -26,6 +26,7 @@ func addLibraryItem(t *testing.T, ts *testServer, root, name string, requesterID
 	cur, err := ts.Deps.Settings.Get(ctx)
 	require.NoError(t, err)
 	if cur.LibraryRoot != root {
+		require.NoError(t, importer.PrepareRoot(root))
 		cur.LibraryRoot = root
 		require.NoError(t, ts.Deps.Settings.Save(ctx, cur))
 	}

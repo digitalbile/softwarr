@@ -20,6 +20,7 @@ import (
 	"github.com/digitalbile/softwarr/internal/db/dbq"
 	"github.com/digitalbile/softwarr/internal/downloadclient"
 	"github.com/digitalbile/softwarr/internal/events"
+	"github.com/digitalbile/softwarr/internal/importer"
 	"github.com/digitalbile/softwarr/internal/notify"
 	"github.com/digitalbile/softwarr/internal/pathmap"
 	"github.com/digitalbile/softwarr/internal/prowlarr"
@@ -225,6 +226,9 @@ func (c *Checker) library(st settings.Settings) Check {
 	name := f.Name()
 	f.Close()
 	os.Remove(name)
+	if !importer.RootReady(root) {
+		return warn("library", fmt.Sprintf("The library folder %s has no %s file, so softwarr treats it as not mounted: imports wait and items can't be removed. If the folder is mounted, create an empty file named %s in it.", root, importer.RootMarker, importer.RootMarker))
+	}
 	return ok("library", "The library folder is writable.")
 }
 

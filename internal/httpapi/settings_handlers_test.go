@@ -2,8 +2,11 @@ package httpapi
 
 import (
 	"net/http"
+	"os"
+	"path/filepath"
 	"testing"
 
+	"github.com/digitalbile/softwarr/internal/importer"
 	"github.com/digitalbile/softwarr/internal/settings"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -17,16 +20,18 @@ func TestGetAndPutSettings(t *testing.T) {
 	st := decode[settings.Settings](t, resp)
 	assert.Len(t, st.APIKey, 32)
 
+	root := filepath.Join(t.TempDir(), "library")
 	st.CommentRequired = true
-	st.LibraryRoot = "/library"
+	st.LibraryRoot = root
 	resp = ts.do("PUT", "/api/v1/settings", st)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	saved := decode[settings.Settings](t, resp)
 	assert.True(t, saved.CommentRequired)
+	assert.FileExists(t, filepath.Join(root, importer.RootMarker), "a new library folder is created and marked")
 
 	got, err := ts.Deps.Settings.Get(t.Context())
 	require.NoError(t, err)
-	assert.Equal(t, "/library", got.LibraryRoot)
+	assert.Equal(t, root, got.LibraryRoot)
 	assert.Equal(t, st.APIKey, got.APIKey)
 }
 
@@ -62,4 +67,36 @@ func TestRegenerateAPIKey(t *testing.T) {
 	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
 	resp = anon.request("GET", "/api/v1/settings", nil, map[string]string{"X-Api-Key": fresh})
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
+}
+
+func TestPutSettingsLibraryRootMarker(t *testing.T) {
+	ts := newTestServer(t)
+	ts.loginAsOwner()
+	st := decode[settings.Settings](t, ts.do("GET", "/api/v1/settings", nil))
+
+	// A path softwarr can't create fails the save.
+	file := filepath.Join(t.TempDir(), "file")
+	require.NoError(t, os.WriteFile(file, []byte("x"), 0o644))
+	st.LibraryRoot = filepath.Join(file, "lib")
+	resp := ts.do("PUT", "/api/v1/settings", st)
+	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+	assert.Equal(t, "softwarr couldn't create the library folder "+st.LibraryRoot+" or write to it. Check the path and that softwarr has permission to write there.", errorBody(t, resp))
+	got, err := ts.Deps.Settings.Get(t.Context())
+	require.NoError(t, err)
+	assert.Empty(t, got.LibraryRoot)
+
+	st.LibraryRoot = "relative/lib"
+	resp = ts.do("PUT", "/api/v1/settings", st)
+	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+	assert.Equal(t, "The library folder must be an absolute path.", errorBody(t, resp))
+
+	// Saving other settings while the volume is away doesn't mark the bare
+	// mount point as the library.
+	root := t.TempDir()
+	st.LibraryRoot = root
+	require.Equal(t, http.StatusOK, ts.do("PUT", "/api/v1/settings", st).StatusCode)
+	require.NoError(t, os.Remove(filepath.Join(root, importer.RootMarker)))
+	st.CommentRequired = true
+	require.Equal(t, http.StatusOK, ts.do("PUT", "/api/v1/settings", st).StatusCode)
+	assert.NoFileExists(t, filepath.Join(root, importer.RootMarker))
 }

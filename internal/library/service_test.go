@@ -39,6 +39,7 @@ func newEnv(t *testing.T) *env {
 	d, q := testutil.NewDB(t)
 	st := settings.NewStore(q)
 	root := t.TempDir()
+	require.NoError(t, importer.PrepareRoot(root))
 	cur, err := st.Get(context.Background())
 	require.NoError(t, err)
 	cur.LibraryRoot = root
@@ -326,8 +327,13 @@ func TestDeleteAndRetentionKeepItemWhenRootMissing(t *testing.T) {
 	for name, unmount := range map[string]func(t *testing.T, e *env){
 		// As if the library volume weren't mounted.
 		"root gone": func(t *testing.T, e *env) { require.NoError(t, os.RemoveAll(e.root)) },
-		// An empty mount point, which is what Docker leaves for a missing bind.
-		"root empty": func(t *testing.T, e *env) { require.NoError(t, os.RemoveAll(filepath.Join(e.root, "Item"))) },
+		// A mount point without the root marker, even one with something in
+		// it, such as an import that landed while the volume was away.
+		"no root marker": func(t *testing.T, e *env) {
+			require.NoError(t, os.RemoveAll(filepath.Join(e.root, "Item")))
+			require.NoError(t, os.Remove(filepath.Join(e.root, importer.RootMarker)))
+			require.NoError(t, os.WriteFile(filepath.Join(e.root, "stray.txt"), []byte("x"), 0o644))
+		},
 	} {
 		t.Run(name, func(t *testing.T) {
 			e := newEnv(t)
@@ -366,9 +372,8 @@ func TestRetentionExpiresItemWhoseFolderIsGone(t *testing.T) {
 	ctx := context.Background()
 	setDefaultDays(t, e, 1)
 	id := e.addItem(t, "Item", map[string]string{"a.txt": "a"})
+	// The root marker shows the volume is there, even with nothing else in it.
 	require.NoError(t, os.RemoveAll(filepath.Join(e.root, "Item")))
-	// Something else in the root shows the volume is there.
-	require.NoError(t, os.WriteFile(filepath.Join(e.root, "notes.txt"), []byte("x"), 0o644))
 
 	*e.clock = e.now.Add(48 * time.Hour)
 	n, err := e.svc.ApplyRetention(ctx)

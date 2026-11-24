@@ -47,6 +47,7 @@ func setup(t *testing.T, files map[string]string) (Source, string) {
 	t.Helper()
 	base := t.TempDir()
 	lib := t.TempDir()
+	require.NoError(t, PrepareRoot(lib))
 	var fs []downloadclient.File
 	// Sorted, so tests that fail the Nth file know which one that is.
 	for _, p := range slices.Sorted(maps.Keys(files)) {
@@ -55,6 +56,20 @@ func setup(t *testing.T, files map[string]string) (Source, string) {
 		fs = append(fs, downloadclient.File{Path: p, Size: int64(len(c))})
 	}
 	return Source{BaseDir: base, Files: fs, Protocol: "torrent"}, lib
+}
+
+// libEntries lists the library root, leaving out the root marker.
+func libEntries(t *testing.T, lib string) []string {
+	t.Helper()
+	ents, err := os.ReadDir(lib)
+	require.NoError(t, err)
+	var names []string
+	for _, e := range ents {
+		if e.Name() != RootMarker {
+			names = append(names, e.Name())
+		}
+	}
+	return names
 }
 
 func TestImportHardlinks(t *testing.T) {
@@ -136,7 +151,7 @@ func TestImportOtherLinkErrorFailsAndCleansUp(t *testing.T) {
 	src, lib := setup(t, map[string]string{"a.bin": "x"})
 	_, err := Import(context.Background(), src, lib, "App")
 	require.Error(t, err)
-	ents, _ := os.ReadDir(lib)
+	ents := libEntries(t, lib)
 	assert.Empty(t, ents)
 }
 
@@ -146,7 +161,7 @@ func TestImportRejectsEscapingPaths(t *testing.T) {
 		src.Files = append(src.Files, downloadclient.File{Path: bad})
 		_, err := Import(context.Background(), src, lib, "App")
 		require.ErrorIs(t, err, ErrUnsafePath, "path %q", bad)
-		ents, _ := os.ReadDir(lib)
+		ents := libEntries(t, lib)
 		assert.Empty(t, ents, "path %q", bad)
 	}
 }
@@ -159,7 +174,7 @@ func TestImportRejectsSymlinkSource(t *testing.T) {
 	src.Files = append(src.Files, downloadclient.File{Path: "evil.bin"})
 	_, err := Import(context.Background(), src, lib, "App")
 	require.ErrorIs(t, err, ErrUnsafePath)
-	ents, _ := os.ReadDir(lib)
+	ents := libEntries(t, lib)
 	assert.Empty(t, ents)
 }
 
@@ -169,7 +184,7 @@ func TestImportCanceledContext(t *testing.T) {
 	cancel()
 	_, err := Import(ctx, src, lib, "App")
 	require.ErrorIs(t, err, context.Canceled)
-	ents, _ := os.ReadDir(lib)
+	ents := libEntries(t, lib)
 	assert.Empty(t, ents)
 }
 
@@ -223,7 +238,7 @@ func TestImportMoveFailureRestoresMovedFiles(t *testing.T) {
 		require.NoError(t, rerr)
 		assert.Equal(t, c, string(b))
 	}
-	ents, _ := os.ReadDir(lib)
+	ents := libEntries(t, lib)
 	assert.Empty(t, ents)
 }
 
@@ -284,7 +299,7 @@ func TestImportCancelDuringCopyStopsAndCleansUp(t *testing.T) {
 	require.ErrorIs(t, err, context.Canceled)
 	assert.Less(t, time.Since(start), 2*time.Second, "the copy stops soon after cancel")
 	assert.Less(t, sr.reads, 5)
-	ents, _ := os.ReadDir(lib)
+	ents := libEntries(t, lib)
 	assert.Empty(t, ents, "no folder or temp file is left")
 }
 
@@ -315,6 +330,7 @@ func TestImportIntoRemovesFolderOnFailure(t *testing.T) {
 
 func TestClaimFolderMarksIt(t *testing.T) {
 	lib := t.TempDir()
+	require.NoError(t, PrepareRoot(lib))
 	folder, err := ClaimFolder(lib, "App", 7)
 	require.NoError(t, err)
 	assert.True(t, FolderMarkedFor(folder, 7))
@@ -335,4 +351,19 @@ func TestClaimFolderMarksIt(t *testing.T) {
 	linked := t.TempDir()
 	require.NoError(t, os.Symlink(filepath.Join(other, ItemMarker), filepath.Join(linked, ItemMarker)))
 	assert.False(t, FolderMarkedFor(linked, 9))
+}
+
+func TestRootMarker(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "lib", "apps")
+	assert.False(t, RootReady(root))
+	_, err := ClaimFolder(root, "App", 1)
+	require.ErrorIs(t, err, ErrRootNotReady)
+	assert.NoDirExists(t, root, "the importer never creates the root")
+
+	require.NoError(t, PrepareRoot(root))
+	assert.True(t, RootReady(root))
+	require.NoError(t, PrepareRoot(root), "again is fine")
+	folder, err := ClaimFolder(root, "App", 1)
+	require.NoError(t, err)
+	assert.Equal(t, filepath.Join(root, "App"), folder)
 }

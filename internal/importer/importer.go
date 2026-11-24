@@ -157,6 +157,34 @@ func createFolder(libraryRoot, name string) (string, error) {
 	}
 }
 
+// RootMarker is the file softwarr keeps in the library root. Its presence is
+// how softwarr tells a mounted library from an empty mount point: without it,
+// nothing is imported into the root and no item is removed from it.
+const RootMarker = ".softwarr-library"
+
+// ErrRootNotReady means the library root has no RootMarker, most likely
+// because the library volume isn't mounted.
+var ErrRootNotReady = errors.New("importer: library root has no " + RootMarker + " file")
+
+// PrepareRoot creates root if needed and writes the root marker in it.
+func PrepareRoot(root string) error {
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		return err
+	}
+	p := filepath.Join(root, RootMarker)
+	if RootReady(root) {
+		return nil
+	}
+	const note = "softwarr keeps this file here to know the library folder is mounted. Leave it in place.\n"
+	return os.WriteFile(p, []byte(note), 0o644)
+}
+
+// RootReady reports whether root holds the root marker as a regular file.
+func RootReady(root string) bool {
+	fi, err := os.Lstat(filepath.Join(root, RootMarker))
+	return err == nil && fi.Mode().IsRegular()
+}
+
 // ItemMarker is the file softwarr keeps in each library folder it creates.
 // It names the request the folder belongs to, so softwarr only empties or
 // removes a folder it can show is its own. SanitizeName trims leading dots, so
@@ -198,6 +226,9 @@ func ClaimFolder(libraryRoot, releaseName string, requestID int64) (string, erro
 	root, err := filepath.Abs(libraryRoot)
 	if err != nil {
 		return "", err
+	}
+	if !RootReady(root) {
+		return "", ErrRootNotReady
 	}
 	folder, err := createFolder(root, SanitizeName(releaseName))
 	if err != nil {
