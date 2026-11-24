@@ -203,3 +203,21 @@ func TestLibraryRootIsNormalized(t *testing.T) {
 	assert.Equal(t, "", CleanLibraryRoot(""))
 	assert.Equal(t, "/a/b", CleanLibraryRoot(" /a//b/ "))
 }
+
+func TestLibraryRootMustBeAbsolute(t *testing.T) {
+	_, q := testutil.NewDB(t)
+	s := NewStore(q)
+	ctx := context.Background()
+	in, err := s.Get(ctx)
+	require.NoError(t, err)
+	for _, root := range []string{"library", "./library", " data/lib "} {
+		in.LibraryRoot = root
+		err = s.Save(ctx, in)
+		require.Error(t, err, root)
+		assert.True(t, IsInputError(err))
+		assert.Equal(t, "The library folder must be an absolute path.", err.Error())
+	}
+	got, err := s.Get(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, "", got.LibraryRoot)
+}
