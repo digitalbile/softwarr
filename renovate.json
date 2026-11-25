@@ -1,11 +1,15 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": ["config:recommended"],
+  "extends": [
+    "config:recommended",
+    "docker:pinDigests",
+    "helpers:pinGitHubActionDigests"
+  ],
   "postUpdateOptions": ["gomodTidy"],
   "packageRules": [
     {
-      "description": "Merge digest, patch, and minor updates once CI passes",
-      "matchUpdateTypes": ["digest", "patch", "minor"],
+      "description": "Merge digest pins and digest, patch, and minor updates once CI passes",
+      "matchUpdateTypes": ["pinDigest", "digest", "patch", "minor"],
       "automerge": true
     }
   ]
