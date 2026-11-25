@@ -21,7 +21,7 @@ const prowlarrTimeout = 60 * time.Second
 type SearchResult struct {
 	prowlarr.Release
 	Key           string `json:"key"`
-	Status        string `json:"status"` // "available" | "requested" | "requestable" | "no_client"
+	Status        string `json:"status"` // one of the requests.Release* values
 	LibraryItemID *int64 `json:"libraryItemId"`
 	Token         string `json:"token"`
 }
@@ -82,55 +82,20 @@ func (s *server) handleSearch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	states, err := s.Requests.ReleaseStates(ctx, releases)
+	if err != nil {
+		serverError(w, err)
+		return
+	}
 	now := s.Now()
 	results := make([]SearchResult, len(releases))
-	keys := make([]string, len(releases))
 	for i, rel := range releases {
-		keys[i] = rel.Key()
 		tok, err := releasetoken.Seal(secret, rel, p.UserID, now)
 		if err != nil {
 			serverError(w, err)
 			return
 		}
-		results[i] = SearchResult{Release: rel, Key: keys[i], Token: tok}
-	}
-	available := map[string]int64{}
-	requested := map[string]bool{}
-	if len(keys) > 0 {
-		rows, err := s.Q.ListAvailableLibraryKeys(ctx, keys)
-		if err != nil {
-			serverError(w, err)
-			return
-		}
-		for _, row := range rows {
-			available[row.ReleaseKey] = row.ID
-		}
-		open, err := s.Q.ListOpenRequestKeys(ctx, keys)
-		if err != nil {
-			serverError(w, err)
-			return
-		}
-		for _, k := range open {
-			requested[k] = true
-		}
-	}
-	protocols, err := s.Q.ListEnabledClientProtocols(ctx)
-	if err != nil {
-		serverError(w, err)
-		return
-	}
-	for i := range results {
-		res := &results[i]
-		if id, ok := available[res.Key]; ok {
-			res.Status = "available"
-			res.LibraryItemID = &id
-		} else if requested[res.Key] {
-			res.Status = "requested"
-		} else if !slices.Contains(protocols, res.Protocol) {
-			res.Status = "no_client"
-		} else {
-			res.Status = "requestable"
-		}
+		results[i] = SearchResult{Release: rel, Key: rel.Key(), Status: states[i].Status, LibraryItemID: states[i].LibraryItemID, Token: tok}
 	}
 	slices.SortStableFunc(results, func(a, b SearchResult) int {
 		return b.PublishDate.Compare(a.PublishDate)

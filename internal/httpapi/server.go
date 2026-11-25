@@ -2,19 +2,19 @@
 package httpapi
 
 import (
-	"database/sql"
 	"io/fs"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/digitalbile/softwarr/internal/auth"
-	"github.com/digitalbile/softwarr/internal/db/dbq"
+	"github.com/digitalbile/softwarr/internal/downloadclient"
 	"github.com/digitalbile/softwarr/internal/events"
 	"github.com/digitalbile/softwarr/internal/health"
 	"github.com/digitalbile/softwarr/internal/library"
 	"github.com/digitalbile/softwarr/internal/logbuf"
 	"github.com/digitalbile/softwarr/internal/notify"
+	"github.com/digitalbile/softwarr/internal/pathmap"
 	"github.com/digitalbile/softwarr/internal/prowlarr"
 	"github.com/digitalbile/softwarr/internal/requests"
 	"github.com/digitalbile/softwarr/internal/settings"
@@ -22,8 +22,6 @@ import (
 )
 
 type Deps struct {
-	DB       *sql.DB
-	Q        *dbq.Queries
 	Settings *settings.Store
 	Users    *auth.Users
 	Sessions *auth.Sessions
@@ -33,7 +31,10 @@ type Deps struct {
 	Requests *requests.Service
 	Library  *library.Service
 	Health   *health.Checker
-	Logs     *logbuf.Handler
+	// DownloadClients and PathMappings store the admin's settings for each.
+	DownloadClients *downloadclient.Store
+	PathMappings    *pathmap.Store
+	Logs            *logbuf.Handler
 	// NewProwlarr builds a Prowlarr client; tests inject a short timeout.
 	NewProwlarr func(url, key string) *prowlarr.Client
 	// Done, when closed, ends open SSE streams so server shutdown can drain.

@@ -59,7 +59,7 @@ Changes are published on the `events` broker. `events_handler.go` streams them t
 
 Each resource has a `*_handlers.go` file with a `registerXRoutes(mux)` function, called from `server.go`. Wrap handlers with `requireUser` or `requireAdmin`. Write responses with `writeJSON` and `writeError`, and use `serverError` for anything unexpected, which logs the error and hides it from the client.
 
-Handlers call a service. They shouldn't query `dbq` directly, so the rules about what can change stay in one place and can be tested without HTTP. The download client, path mapping, and search handlers still query `dbq` themselves; move that code into a service when you next work on them.
+Handlers call a service and never query the database, so the rules about what can change stay in one place and can be tested without HTTP. `httpapi.Deps` has no database handle, which keeps it that way. A new resource gets a service or store in its domain package, with a constructor that `main.go` passes into `Deps`.
 
 Each service exports sentinel errors (`ErrNotFound`, `ErrConflict`, and so on). The handler file maps them to status codes in one function, such as `writeRequestError`. Error text that reaches users is written as a full sentence, which is why some error strings are capitalized and end with a period.
 

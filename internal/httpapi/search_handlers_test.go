@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/digitalbile/softwarr/internal/db/dbq"
 	"github.com/digitalbile/softwarr/internal/prowlarr"
 	"github.com/digitalbile/softwarr/internal/releasetoken"
 	"github.com/digitalbile/softwarr/internal/settings"
@@ -240,7 +241,7 @@ func TestSearchResultsHideDownloadLinks(t *testing.T) {
 }
 
 func TestSearchProwlarrTimeout(t *testing.T) {
-	ts := newTestServerWith(t, "", func(d *Deps) {
+	ts := newTestServerWith(t, "", func(d *Deps, q *dbq.Queries) {
 		d.NewProwlarr = func(url, key string) *prowlarr.Client {
 			return prowlarr.New(url, key, &http.Client{Timeout: 100 * time.Millisecond})
 		}

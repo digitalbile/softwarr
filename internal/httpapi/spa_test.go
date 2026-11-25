@@ -10,6 +10,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/digitalbile/softwarr/internal/db/dbq"
 )
 
 func testUI() fs.FS {
@@ -21,7 +23,7 @@ func testUI() fs.FS {
 }
 
 func uiServer(t *testing.T, urlBase string, ui fs.FS) *testServer {
-	return newTestServerWith(t, urlBase, func(d *Deps) { d.UI = ui })
+	return newTestServerWith(t, urlBase, func(d *Deps, q *dbq.Queries) { d.UI = ui })
 }
 
 func readBody(t *testing.T, resp *http.Response) string {

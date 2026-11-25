@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/digitalbile/softwarr/internal/db/dbq"
 	"github.com/digitalbile/softwarr/internal/health"
 	"github.com/digitalbile/softwarr/internal/logbuf"
 )
@@ -29,7 +30,7 @@ func TestSystemEndpointsAdminOnly(t *testing.T) {
 
 func TestSystemStatus(t *testing.T) {
 	started := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
-	ts := newTestServerWith(t, "/base", func(d *Deps) { d.DataDir = "/config"; d.StartedAt = started })
+	ts := newTestServerWith(t, "/base", func(d *Deps, q *dbq.Queries) { d.DataDir = "/config"; d.StartedAt = started })
 	_, err := ts.Deps.Users.Setup(context.Background(), "owner", testPassword)
 	require.NoError(t, err)
 	login := ts.do("POST", "/base/api/v1/auth/login", map[string]string{"username": "owner", "password": testPassword})
@@ -48,7 +49,7 @@ func TestSystemLogsNewestFirstCapped(t *testing.T) {
 	for i := 0; i < 600; i++ {
 		l.Info(fmt.Sprintf("m%d", i))
 	}
-	ts := newTestServerWith(t, "", func(d *Deps) { d.Logs = lb })
+	ts := newTestServerWith(t, "", func(d *Deps, q *dbq.Queries) { d.Logs = lb })
 	ts.loginAsOwner()
 	resp := ts.do("GET", "/api/v1/system/logs", nil)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
@@ -59,8 +60,8 @@ func TestSystemLogsNewestFirstCapped(t *testing.T) {
 }
 
 func TestSystemHealth(t *testing.T) {
-	ts := newTestServerWith(t, "", func(d *Deps) {
-		d.Health = health.NewChecker(d.Q, d.Settings, nil, nil, nil, nil)
+	ts := newTestServerWith(t, "", func(d *Deps, q *dbq.Queries) {
+		d.Health = health.NewChecker(q, d.Settings, nil, nil, nil, nil)
 	})
 	ts.loginAsOwner()
 	resp := ts.do("GET", "/api/v1/system/health", nil)

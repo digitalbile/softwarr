@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/digitalbile/softwarr/internal/auth"
+	"github.com/digitalbile/softwarr/internal/db/dbq"
 	"github.com/digitalbile/softwarr/internal/events"
 )
 
@@ -246,7 +247,7 @@ func TestPasswordChangeDisconnectsAfterNewSession(t *testing.T) {
 
 func TestSSEStreamEndsWhenDemotedWhileSubscribing(t *testing.T) {
 	// Only the check at subscribe can end it within the test.
-	ts := newTestServerWith(t, "", func(d *Deps) { d.PingInterval = time.Hour })
+	ts := newTestServerWith(t, "", func(d *Deps, q *dbq.Queries) { d.PingInterval = time.Hour })
 	ts.loginAsOwner()
 	bc, bob := newAdminClient(t, ts, "bob")
 	t.Cleanup(func() { testHookAfterSubscribe = nil })
@@ -260,7 +261,7 @@ func TestSSEStreamEndsWhenDemotedWhileSubscribing(t *testing.T) {
 }
 
 func TestUserUpdateDisconnectsEvenWhenSessionCleanupFails(t *testing.T) {
-	ts := newTestServerWith(t, "", func(d *Deps) { d.PingInterval = time.Hour })
+	ts := newTestServerWith(t, "", func(d *Deps, q *dbq.Queries) { d.PingInterval = time.Hour })
 	ts.loginAsOwner()
 	bc, bob := newAdminClient(t, ts, "bob")
 	resp := bc.do("GET", "/api/v1/events", nil)
