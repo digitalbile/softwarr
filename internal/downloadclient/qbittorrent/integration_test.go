@@ -12,8 +12,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/digitalbile/softwarr/internal/downloadclient"
 	"github.com/stretchr/testify/require"
+
+	"github.com/digitalbile/softwarr/internal/downloadclient"
 )
 
 // Run manually against a real qBittorrent:

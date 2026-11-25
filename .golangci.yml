@@ -1,0 +1,56 @@
+version: "2"
+
+linters:
+  default: standard
+  enable:
+    - bodyclose
+    - errorlint
+    - misspell
+    - nilerr
+    - noctx
+    - unconvert
+  settings:
+    errcheck:
+      exclude-functions:
+        - (*database/sql.Tx).Rollback
+    errorlint:
+      # Some errors format the cause with %v on purpose, to keep it out of
+      # the chain and wrap only a sentinel.
+      errorf: false
+    misspell:
+      ignore-rules:
+        - hardlinked
+    staticcheck:
+      checks:
+        - all
+        # Some error strings are shown to users as written, so they are
+        # capitalized and punctuated as sentences.
+        - -ST1005
+        # Package and exported-name comments are optional.
+        - -ST1000
+        - -ST1020
+        - -ST1021
+        - -ST1022
+  exclusions:
+    generated: strict
+    presets:
+      # Unchecked Close, Remove, Flush, and print calls.
+      - std-error-handling
+    rules:
+      - path: _test\.go
+        linters:
+          - bodyclose
+          - noctx
+      - path: _test\.go
+        linters:
+          - errcheck
+        text: "`w.Write`"
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/digitalbile/softwarr

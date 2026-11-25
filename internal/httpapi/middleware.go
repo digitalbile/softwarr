@@ -21,7 +21,7 @@ func recoverer(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer func() {
 			if v := recover(); v != nil {
-				if v == http.ErrAbortHandler {
+				if v == http.ErrAbortHandler { //nolint:errorlint // a recovered value, never wrapped
 					panic(v)
 				}
 				slog.Error("panic in handler", "panic", v, "path", r.URL.Path)

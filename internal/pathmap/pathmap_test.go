@@ -3,9 +3,10 @@ package pathmap
 import (
 	"testing"
 
-	"github.com/digitalbile/softwarr/internal/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/digitalbile/softwarr/internal/testutil"
 )
 
 func TestMapLongestPrefix(t *testing.T) {

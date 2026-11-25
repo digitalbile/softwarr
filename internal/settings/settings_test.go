@@ -7,10 +7,11 @@ import (
 	"regexp"
 	"testing"
 
-	"github.com/digitalbile/softwarr/internal/db/dbq"
-	"github.com/digitalbile/softwarr/internal/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/digitalbile/softwarr/internal/db/dbq"
+	"github.com/digitalbile/softwarr/internal/testutil"
 )
 
 func TestGetReturnsDefaultsAndGeneratesAPIKey(t *testing.T) {

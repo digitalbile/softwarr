@@ -3,8 +3,9 @@ package db_test
 import (
 	"testing"
 
-	"github.com/digitalbile/softwarr/internal/testutil"
 	"github.com/stretchr/testify/require"
+
+	"github.com/digitalbile/softwarr/internal/testutil"
 )
 
 func TestMigrateCreatesSchema(t *testing.T) {

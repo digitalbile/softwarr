@@ -3,10 +3,14 @@ package requests
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"net/http"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/digitalbile/softwarr/internal/auth"
 	"github.com/digitalbile/softwarr/internal/db/dbq"
@@ -15,8 +19,6 @@ import (
 	"github.com/digitalbile/softwarr/internal/prowlarr"
 	"github.com/digitalbile/softwarr/internal/settings"
 	"github.com/digitalbile/softwarr/internal/testutil"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 var fixedNow = time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
@@ -233,7 +235,7 @@ func TestApproveTwiceSecondGetsConflict(t *testing.T) {
 		switch {
 		case err == nil:
 			ok++
-		case err == ErrConflict:
+		case errors.Is(err, ErrConflict):
 			conflict++
 		default:
 			t.Fatalf("unexpected error: %v", err)

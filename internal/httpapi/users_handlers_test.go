@@ -5,9 +5,10 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/digitalbile/softwarr/internal/auth"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/digitalbile/softwarr/internal/auth"
 )
 
 func TestUsersEndpointsAdminOnly(t *testing.T) {

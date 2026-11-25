@@ -13,11 +13,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/digitalbile/softwarr/internal/db/dbq"
 	"github.com/digitalbile/softwarr/internal/events"
 	"github.com/digitalbile/softwarr/internal/settings"
 	"github.com/digitalbile/softwarr/internal/testutil"
-	"github.com/stretchr/testify/require"
 )
 
 var fixedNow = time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)

@@ -7,8 +7,9 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/digitalbile/softwarr/internal/notify"
 	"github.com/stretchr/testify/require"
+
+	"github.com/digitalbile/softwarr/internal/notify"
 )
 
 type notifJSON struct {
