@@ -1,5 +1,6 @@
 // Mirrors of the Go JSON types. Timestamps are RFC 3339 strings except
-// Notification.createdAt, which is unix seconds.
+// Notification.createdAt, which is unix seconds. apitypes_test.go in
+// internal/httpapi checks the field names against Go.
 
 export interface User {
   id: number
