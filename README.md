@@ -89,7 +89,7 @@ make smoke    # build the image and run the end-to-end check
 
 The web UI tests run with `cd web && npx vitest run`.
 
-GitHub Actions runs the tests on every push and pull request. A push to `main` publishes the `main` image. To publish a release, push a version tag such as `v0.1.0`. That publishes `0.1.0`, `0.1`, and `latest`.
+The CI workflow runs the tests, the web build, and `make smoke` on every pull request. The CD workflow runs CI again on each push to `main`, then publishes the `main` image. To publish a release, push a version tag such as `v0.1.0`. That publishes `0.1.0`, `0.1`, and `latest`.
 
 ## License
 
