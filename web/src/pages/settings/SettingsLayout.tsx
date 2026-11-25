@@ -7,12 +7,14 @@ import { IndexerSettings } from './IndexerSettings'
 import { LibrarySettings } from './LibrarySettings'
 import { NotificationSettings } from './NotificationSettings'
 import { PathMappingSettings } from './PathMappingSettings'
+import { RequestSettings } from './RequestSettings'
 import { UsersSettings } from './UsersSettings'
 
 const sections = [
   { path: 'general', label: 'General', element: <GeneralSettings /> },
   { path: 'auth', label: 'Authentication', element: <AuthSettings /> },
   { path: 'indexers', label: 'Indexers', element: <IndexerSettings /> },
+  { path: 'requests', label: 'Requests', element: <RequestSettings /> },
   { path: 'downloadclients', label: 'Download clients', element: <DownloadClientSettings /> },
   { path: 'pathmappings', label: 'Remote path mappings', element: <PathMappingSettings /> },
   { path: 'library', label: 'Library', element: <LibrarySettings /> },
