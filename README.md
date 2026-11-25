@@ -79,17 +79,20 @@ softwarr supports one OIDC provider alongside local accounts. The owner account 
 
 ## Development
 
+`ARCHITECTURE.md` describes how the code is organized and the conventions to follow.
+
 ```
 make web      # build the web UI into web/dist
 make build    # build the binary
 make test     # Go tests
+make lint     # golangci-lint and Biome (install golangci-lint first)
 make docker   # build the Docker image
 make smoke    # build the image and run the end-to-end check
 ```
 
 The web UI tests run with `cd web && npx vitest run`.
 
-The CI workflow runs the Go tests, the web tests and build, and `make smoke` on every pull request. Its `check` job passes only when the others do, so branch protection needs to require only `check`. Renovate opens dependency update PRs and merges digest, patch, and minor updates once CI passes. Major updates wait for a review. The CD workflow runs CI again on each push to `main`, then publishes the `main` image. To publish a release, push a version tag such as `v0.1.0`. That publishes `0.1.0`, `0.1`, and `latest`.
+The CI workflow runs the linters, the Go tests, the web tests and build, and `make smoke` on every pull request. It also fails if `go.mod` isn't tidy or the sqlc output is out of date. Its `check` job passes only when the others do, so branch protection needs to require only `check`. Renovate opens dependency update PRs and merges digest, patch, and minor updates once CI passes. Major updates wait for a review. The CD workflow runs CI again on each push to `main`, then publishes the `main` image. To publish a release, push a version tag such as `v0.1.0`. That publishes `0.1.0`, `0.1`, and `latest`.
 
 ## License
 
