@@ -11,10 +11,10 @@ import (
 
 // Mapping says that RemotePath on Host is LocalPath here.
 type Mapping struct {
-	ID         int64
-	Host       string
-	RemotePath string
-	LocalPath  string
+	ID         int64  `json:"id"`
+	Host       string `json:"host"`
+	RemotePath string `json:"remotePath"`
+	LocalPath  string `json:"localPath"`
 }
 
 // Load reads every mapping from the database.
@@ -25,7 +25,7 @@ func Load(ctx context.Context, q *dbq.Queries) ([]Mapping, error) {
 	}
 	out := make([]Mapping, 0, len(rows))
 	for _, r := range rows {
-		out = append(out, Mapping{ID: r.ID, Host: r.Host, RemotePath: r.RemotePath, LocalPath: r.LocalPath})
+		out = append(out, toMapping(r))
 	}
 	return out, nil
 }

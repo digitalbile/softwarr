@@ -17,6 +17,7 @@ import (
 	"github.com/digitalbile/softwarr/internal/config"
 	"github.com/digitalbile/softwarr/internal/db"
 	"github.com/digitalbile/softwarr/internal/db/dbq"
+	"github.com/digitalbile/softwarr/internal/downloadclient"
 	_ "github.com/digitalbile/softwarr/internal/downloadclient/qbittorrent"
 	"github.com/digitalbile/softwarr/internal/events"
 	"github.com/digitalbile/softwarr/internal/health"
@@ -24,6 +25,7 @@ import (
 	"github.com/digitalbile/softwarr/internal/library"
 	"github.com/digitalbile/softwarr/internal/logbuf"
 	"github.com/digitalbile/softwarr/internal/notify"
+	"github.com/digitalbile/softwarr/internal/pathmap"
 	"github.com/digitalbile/softwarr/internal/requests"
 	"github.com/digitalbile/softwarr/internal/settings"
 )
@@ -129,24 +131,24 @@ func run() error {
 	}()
 	sseDone := make(chan struct{})
 	handler := httpapi.New(httpapi.Deps{
-		DB:        database,
-		Q:         q,
-		Settings:  st,
-		Users:     auth.NewUsers(database, q),
-		Sessions:  sessions,
-		OIDC:      auth.NewOIDC(st, q, database, time.Now),
-		Broker:    broker,
-		Notify:    notifier,
-		Requests:  requestSvc,
-		Library:   librarySvc,
-		Health:    checker,
-		Logs:      logs,
-		Done:      sseDone,
-		URLBase:   cfg.URLBase,
-		DataDir:   cfg.DataDir,
-		StartedAt: startedAt,
-		Version:   version,
-		Now:       time.Now,
+		Settings:        st,
+		Users:           auth.NewUsers(database, q),
+		Sessions:        sessions,
+		OIDC:            auth.NewOIDC(st, q, database, time.Now),
+		Broker:          broker,
+		Notify:          notifier,
+		Requests:        requestSvc,
+		Library:         librarySvc,
+		Health:          checker,
+		DownloadClients: downloadclient.NewStore(q),
+		PathMappings:    pathmap.NewStore(q),
+		Logs:            logs,
+		Done:            sseDone,
+		URLBase:         cfg.URLBase,
+		DataDir:         cfg.DataDir,
+		StartedAt:       startedAt,
+		Version:         version,
+		Now:             time.Now,
 	})
 	srv := newHTTPServer(cfg.Port, handler)
 

@@ -16,9 +16,11 @@ import (
 
 	"github.com/digitalbile/softwarr/internal/auth"
 	"github.com/digitalbile/softwarr/internal/db/dbq"
+	"github.com/digitalbile/softwarr/internal/downloadclient"
 	"github.com/digitalbile/softwarr/internal/events"
 	"github.com/digitalbile/softwarr/internal/library"
 	"github.com/digitalbile/softwarr/internal/notify"
+	"github.com/digitalbile/softwarr/internal/pathmap"
 	"github.com/digitalbile/softwarr/internal/requests"
 	"github.com/digitalbile/softwarr/internal/settings"
 	"github.com/digitalbile/softwarr/internal/testutil"
@@ -70,7 +72,7 @@ func newTestServerBase(t *testing.T, urlBase string) *testServer {
 }
 
 // newTestServerWith lets a test adjust Deps before the server starts.
-func newTestServerWith(t *testing.T, urlBase string, mutate func(*Deps)) *testServer {
+func newTestServerWith(t *testing.T, urlBase string, mutate func(*Deps, *dbq.Queries)) *testServer {
 	t.Helper()
 	d, q := testutil.NewDB(t)
 	// Start at the real time: the cookie jar judges cookie expiry by the wall clock.
@@ -78,23 +80,24 @@ func newTestServerWith(t *testing.T, urlBase string, mutate func(*Deps)) *testSe
 	st := settings.NewStore(q)
 	shutdown := make(chan struct{})
 	deps := Deps{
-		DB: d, Q: q,
-		Settings:     st,
-		Users:        auth.NewUsers(d, q),
-		Sessions:     auth.NewSessions(q, clock.Now),
-		OIDC:         auth.NewOIDC(st, q, d, clock.Now),
-		Done:         shutdown,
-		Broker:       events.NewBroker(),
-		PingInterval: 20 * time.Millisecond,
-		URLBase:      urlBase,
-		Version:      "test",
-		Now:          clock.Now,
+		Settings:        st,
+		Users:           auth.NewUsers(d, q),
+		Sessions:        auth.NewSessions(q, clock.Now),
+		OIDC:            auth.NewOIDC(st, q, d, clock.Now),
+		DownloadClients: downloadclient.NewStore(q),
+		PathMappings:    pathmap.NewStore(q),
+		Done:            shutdown,
+		Broker:          events.NewBroker(),
+		PingInterval:    20 * time.Millisecond,
+		URLBase:         urlBase,
+		Version:         "test",
+		Now:             clock.Now,
 	}
 	deps.Notify = notify.New(q, deps.Broker, st, http.DefaultClient, clock.Now)
 	deps.Requests = requests.NewService(d, q, st, deps.Notify, deps.Broker, clock.Now)
 	deps.Library = library.NewService(q, st, deps.Notify, deps.Broker, clock.Now)
 	if mutate != nil {
-		mutate(&deps)
+		mutate(&deps, q)
 	}
 	srv := httptest.NewServer(New(deps))
 	t.Cleanup(srv.Close)

@@ -1,16 +1,11 @@
 package httpapi
 
 import (
-	"database/sql"
 	"errors"
 	"net/http"
-	"strings"
 
-	"github.com/digitalbile/softwarr/internal/db/dbq"
 	"github.com/digitalbile/softwarr/internal/pathmap"
 )
-
-const errPathMappingNotFound = "That path mapping doesn't exist."
 
 func (s *server) registerPathMappingRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/pathmappings", requireAdmin(s.handleListPathMappings))
@@ -19,123 +14,65 @@ func (s *server) registerPathMappingRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /api/v1/pathmappings/{id}", requireAdmin(s.handleDeletePathMapping))
 }
 
-type pathMappingInput struct {
-	Host       string `json:"host"`
-	RemotePath string `json:"remotePath"`
-	LocalPath  string `json:"localPath"`
-}
-
-type pathMappingView struct {
-	ID         int64  `json:"id"`
-	Host       string `json:"host"`
-	RemotePath string `json:"remotePath"`
-	LocalPath  string `json:"localPath"`
-}
-
-func toPathMappingView(m dbq.PathMapping) pathMappingView {
-	return pathMappingView{ID: m.ID, Host: m.Host, RemotePath: m.RemotePath, LocalPath: m.LocalPath}
-}
-
-// validate trims and normalizes the input, returning a user-facing message
-// when it is not acceptable.
-func (in pathMappingInput) validate() (pathMappingInput, string) {
-	in.Host = strings.TrimSpace(in.Host)
-	in.RemotePath = strings.TrimSpace(in.RemotePath)
-	in.LocalPath = strings.TrimSpace(in.LocalPath)
+func writePathMappingError(w http.ResponseWriter, err error) {
 	switch {
-	case in.Host == "":
-		return in, "Enter the download client host."
-	case in.RemotePath == "":
-		return in, "Enter the remote path."
-	case in.LocalPath == "":
-		return in, "Enter the local path."
-	case !strings.HasPrefix(in.LocalPath, "/"):
-		return in, "The local path must start with /."
+	case errors.Is(err, pathmap.ErrNotFound):
+		writeError(w, http.StatusNotFound, err.Error())
+	case pathmap.IsInputError(err):
+		writeError(w, http.StatusBadRequest, err.Error())
+	default:
+		serverError(w, err)
 	}
-	if pathmap.IsWindows(in.RemotePath) {
-		if !strings.HasSuffix(in.RemotePath, `\`) && !strings.HasSuffix(in.RemotePath, "/") {
-			in.RemotePath += `\`
-		}
-	} else if !strings.HasSuffix(in.RemotePath, "/") {
-		in.RemotePath += "/"
-	}
-	if !strings.HasSuffix(in.LocalPath, "/") {
-		in.LocalPath += "/"
-	}
-	return in, ""
 }
 
 func (s *server) handleListPathMappings(w http.ResponseWriter, r *http.Request) {
-	rows, err := s.Q.ListPathMappings(r.Context())
+	list, err := s.PathMappings.List(r.Context())
 	if err != nil {
 		serverError(w, err)
 		return
 	}
-	out := make([]pathMappingView, 0, len(rows))
-	for _, m := range rows {
-		out = append(out, toPathMappingView(m))
-	}
-	writeJSON(w, http.StatusOK, out)
+	writeJSON(w, http.StatusOK, list)
 }
 
 func (s *server) handleCreatePathMapping(w http.ResponseWriter, r *http.Request) {
-	var in pathMappingInput
+	var in pathmap.Input
 	if err := decodeJSON(r, &in); err != nil {
 		writeError(w, http.StatusBadRequest, "Invalid request body.")
 		return
 	}
-	in, msg := in.validate()
-	if msg != "" {
-		writeError(w, http.StatusBadRequest, msg)
-		return
-	}
-	row, err := s.Q.CreatePathMapping(r.Context(), dbq.CreatePathMappingParams{Host: in.Host, RemotePath: in.RemotePath, LocalPath: in.LocalPath})
+	m, err := s.PathMappings.Create(r.Context(), in)
 	if err != nil {
-		serverError(w, err)
+		writePathMappingError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusCreated, toPathMappingView(row))
+	writeJSON(w, http.StatusCreated, m)
 }
 
 func (s *server) handleUpdatePathMapping(w http.ResponseWriter, r *http.Request) {
-	id, ok := pathID(w, r, errPathMappingNotFound)
+	id, ok := pathID(w, r, pathmap.ErrNotFound.Error())
 	if !ok {
 		return
 	}
-	var in pathMappingInput
+	var in pathmap.Input
 	if err := decodeJSON(r, &in); err != nil {
 		writeError(w, http.StatusBadRequest, "Invalid request body.")
 		return
 	}
-	in, msg := in.validate()
-	if msg != "" {
-		writeError(w, http.StatusBadRequest, msg)
-		return
-	}
-	row, err := s.Q.UpdatePathMapping(r.Context(), dbq.UpdatePathMappingParams{Host: in.Host, RemotePath: in.RemotePath, LocalPath: in.LocalPath, ID: id})
-	if errors.Is(err, sql.ErrNoRows) {
-		writeError(w, http.StatusNotFound, errPathMappingNotFound)
-		return
-	}
+	m, err := s.PathMappings.Update(r.Context(), id, in)
 	if err != nil {
-		serverError(w, err)
+		writePathMappingError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, toPathMappingView(row))
+	writeJSON(w, http.StatusOK, m)
 }
 
 func (s *server) handleDeletePathMapping(w http.ResponseWriter, r *http.Request) {
-	id, ok := pathID(w, r, errPathMappingNotFound)
+	id, ok := pathID(w, r, pathmap.ErrNotFound.Error())
 	if !ok {
 		return
 	}
-	n, err := s.Q.DeletePathMapping(r.Context(), id)
-	if err != nil {
-		serverError(w, err)
-		return
-	}
-	if n == 0 {
-		writeError(w, http.StatusNotFound, errPathMappingNotFound)
+	if err := s.PathMappings.Delete(r.Context(), id); err != nil {
+		writePathMappingError(w, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
