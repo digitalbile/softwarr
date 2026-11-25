@@ -1,4 +1,4 @@
-import { Alert, Button, CopyButton, Group, Loader, NumberInput, Switch, TextInput } from '@mantine/core'
+import { Alert, Button, CopyButton, Group, Loader, NumberInput, TextInput } from '@mantine/core'
 import { useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { api } from '../../api/client'
@@ -11,9 +11,7 @@ function GeneralForm({ settings }: { settings: Settings }) {
   const save = useSaveSettings()
   const queryClient = useQueryClient()
   const [externalUrl, setExternalUrl] = useState(settings.externalUrl)
-  const [commentRequired, setCommentRequired] = useState(settings.commentRequired)
   const [retention, setRetention] = useState<number | string>(settings.defaultRetentionDays)
-  const [stall, setStall] = useState<number | string>(settings.stallHours)
   const [confirming, setConfirming] = useState(false)
 
   return (
@@ -24,9 +22,7 @@ function GeneralForm({ settings }: { settings: Settings }) {
           save.mutateAsync((s) => ({
             ...s,
             externalUrl: externalUrl.trim(),
-            commentRequired,
             defaultRetentionDays: Number(retention) || 0,
-            stallHours: Number(stall) || 0,
           }))
         }
       >
@@ -57,11 +53,6 @@ function GeneralForm({ settings }: { settings: Settings }) {
             </Group>
           }
         />
-        <Switch
-          label="Require a reason with every request"
-          checked={commentRequired}
-          onChange={(e) => setCommentRequired(e.currentTarget.checked)}
-        />
         <NumberInput
           label="Default retention days"
           description="How long imported items stay in the library. 0 keeps them forever."
@@ -69,14 +60,6 @@ function GeneralForm({ settings }: { settings: Settings }) {
           allowDecimal={false}
           value={retention}
           onChange={setRetention}
-        />
-        <NumberInput
-          label="Stall threshold hours"
-          description="Downloads with no progress for this long are flagged as stalled."
-          min={0}
-          allowDecimal={false}
-          value={stall}
-          onChange={setStall}
         />
       </SectionForm>
       <ConfirmDialog
