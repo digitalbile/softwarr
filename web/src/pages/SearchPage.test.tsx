@@ -1,20 +1,33 @@
+import { focusManager } from '@tanstack/react-query'
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { focusManager } from '@tanstack/react-query'
-import { http, HttpResponse } from 'msw'
+import { HttpResponse, http } from 'msw'
 import { expect, test, vi } from 'vitest'
 import type { SearchResult } from '../api/types'
 import { makeUser, server } from '../test/server'
-import { FakeEventSource, renderApp, useApiServer } from '../test/utils'
+import { FakeEventSource, renderApp, setupApiServer } from '../test/utils'
 
-useApiServer()
+setupApiServer()
 
 function result(over: Partial<SearchResult>): SearchResult {
   return {
-    guid: 'g', title: 'Thing', indexer: 'Idx', indexerId: 1, protocol: 'torrent', size: 1024 ** 3,
-    publishDate: new Date(Date.now() - 3 * 86400000).toISOString(), seeders: 10, leechers: 2, grabs: null,
-    infoHash: 'abc', categories: [4000],
-    key: 'k', status: 'requestable', libraryItemId: null, token: `tok-${over.key ?? 'k'}`, ...over,
+    guid: 'g',
+    title: 'Thing',
+    indexer: 'Idx',
+    indexerId: 1,
+    protocol: 'torrent',
+    size: 1024 ** 3,
+    publishDate: new Date(Date.now() - 3 * 86400000).toISOString(),
+    seeders: 10,
+    leechers: 2,
+    grabs: null,
+    infoHash: 'abc',
+    categories: [4000],
+    key: 'k',
+    status: 'requestable',
+    libraryItemId: null,
+    token: `tok-${over.key ?? 'k'}`,
+    ...over,
   }
 }
 
@@ -118,7 +131,7 @@ test('duplicate request shows server message', async () => {
 })
 
 test('server errors show above the table', async () => {
-  setup({}, () => HttpResponse.json({ error: 'Prowlarr isn\'t set up yet.' }, { status: 409 }))
+  setup({}, () => HttpResponse.json({ error: "Prowlarr isn't set up yet." }, { status: 409 }))
   await runSearch()
   expect(await screen.findByText("Prowlarr isn't set up yet.")).toBeInTheDocument()
 })
@@ -126,7 +139,9 @@ test('server errors show above the table', async () => {
 test('admins can filter by indexer', async () => {
   let ids: string | null = 'unset'
   server.use(
-    http.get('*/api/v1/indexers', () => HttpResponse.json([{ id: 3, name: 'Nyaa', protocol: 'torrent', enabled: true }])),
+    http.get('*/api/v1/indexers', () =>
+      HttpResponse.json([{ id: 3, name: 'Nyaa', protocol: 'torrent', enabled: true }]),
+    ),
   )
   setup({ isAdmin: true }, () => HttpResponse.json(results))
   server.use(

@@ -1,11 +1,11 @@
 import { screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { http, HttpResponse } from 'msw'
+import { HttpResponse, http } from 'msw'
 import { expect, test } from 'vitest'
 import { makeUser, server } from '../../test/server'
-import { renderApp, useApiServer } from '../../test/utils'
+import { renderApp, setupApiServer } from '../../test/utils'
 
-useApiServer()
+setupApiServer()
 
 function setup() {
   server.use(
@@ -18,7 +18,13 @@ function setup() {
       ]),
     ),
     http.get('*/api/v1/system/status', () =>
-      HttpResponse.json({ version: '1.2.3', goVersion: 'go1.27', dataDir: '/data', urlBase: '', startedAt: '2026-01-01T00:00:00Z' }),
+      HttpResponse.json({
+        version: '1.2.3',
+        goVersion: 'go1.27',
+        dataDir: '/data',
+        urlBase: '',
+        startedAt: '2026-01-01T00:00:00Z',
+      }),
     ),
     http.get('*/api/v1/system/logs', () =>
       HttpResponse.json([

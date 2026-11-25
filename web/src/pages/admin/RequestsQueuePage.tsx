@@ -1,6 +1,6 @@
-import { useState } from 'react'
 import { Alert, Button, Group, Loader, SegmentedControl, Stack, Table, Text, Title } from '@mantine/core'
 import { useQuery } from '@tanstack/react-query'
+import { useState } from 'react'
 import { api } from '../../api/client'
 import type { Request } from '../../api/types'
 import { ApproveDialog } from '../../components/ApproveDialog'
@@ -101,10 +101,19 @@ export function RequestsQueuePage() {
                   <Table.Td>
                     {r.status === 'pending' && (
                       <Group gap="xs" wrap="nowrap">
-                        <Button size="compact-xs" onClick={() => setApproving(r)} aria-label={`Approve ${r.displayTitle || r.release.title}`}>
+                        <Button
+                          size="compact-xs"
+                          onClick={() => setApproving(r)}
+                          aria-label={`Approve ${r.displayTitle || r.release.title}`}
+                        >
                           Approve
                         </Button>
-                        <Button size="compact-xs" variant="default" onClick={() => setDenying(r)} aria-label={`Deny ${r.displayTitle || r.release.title}`}>
+                        <Button
+                          size="compact-xs"
+                          variant="default"
+                          onClick={() => setDenying(r)}
+                          aria-label={`Deny ${r.displayTitle || r.release.title}`}
+                        >
                           Deny
                         </Button>
                       </Group>

@@ -1,6 +1,6 @@
-import { useState } from 'react'
 import { Alert, Button, Group, Loader, MultiSelect, Stack, TextInput, Title } from '@mantine/core'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useState } from 'react'
 import { api } from '../api/client'
 import type { Indexer, SearchResult } from '../api/types'
 import { useAuth } from '../auth/useAuth'
@@ -58,7 +58,9 @@ export function SearchPage() {
       old?.map((x) => (x.key === r.key ? { ...x, status: 'requested' } : x)),
     )
 
-  const indexerOptions = (indexers.data ?? []).filter((i) => i.enabled).map((i) => ({ value: String(i.id), label: i.name }))
+  const indexerOptions = (indexers.data ?? [])
+    .filter((i) => i.enabled)
+    .map((i) => ({ value: String(i.id), label: i.name }))
 
   return (
     <Stack gap="md">
@@ -72,7 +74,14 @@ export function SearchPage() {
             style={{ flex: 1, minWidth: 220 }}
           />
           {indexerOptions.length > 0 && (
-            <MultiSelect label="Indexers" placeholder="All indexers" data={indexerOptions} value={picked} onChange={setPicked} clearable />
+            <MultiSelect
+              label="Indexers"
+              placeholder="All indexers"
+              data={indexerOptions}
+              value={picked}
+              onChange={setPicked}
+              clearable
+            />
           )}
           <Button type="submit" loading={search.isFetching}>
             Search

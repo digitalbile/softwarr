@@ -1,5 +1,5 @@
-import { useState } from 'react'
 import { Button, Text } from '@mantine/core'
+import { useState } from 'react'
 import { messageOf } from '../../errors'
 
 export interface TestOutcome {

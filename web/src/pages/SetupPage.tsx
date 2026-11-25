@@ -33,7 +33,8 @@ export function SetupPage() {
           <Stack>
             <Title order={3}>Create the owner account</Title>
             <Text size="sm" c="dimmed">
-              This is the first account for softwarr. The owner always signs in with a password, even if you set up SSO later.
+              This is the first account for softwarr. The owner always signs in with a password, even if you set up SSO
+              later.
             </Text>
             {error && <Alert color="red">{error}</Alert>}
             <TextInput label="Username" autoComplete="username" required {...form.getInputProps('username')} />

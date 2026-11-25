@@ -59,8 +59,18 @@ export function ProfilePage() {
             <Stack>
               <Title order={5}>Change password</Title>
               {error && <Alert color="red">{error}</Alert>}
-              <PasswordInput label="Current password" autoComplete="current-password" required {...form.getInputProps('current')} />
-              <PasswordInput label="New password" autoComplete="new-password" required {...form.getInputProps('next')} />
+              <PasswordInput
+                label="Current password"
+                autoComplete="current-password"
+                required
+                {...form.getInputProps('current')}
+              />
+              <PasswordInput
+                label="New password"
+                autoComplete="new-password"
+                required
+                {...form.getInputProps('next')}
+              />
               <Button type="submit" loading={form.submitting}>
                 Change password
               </Button>

@@ -1,6 +1,6 @@
-import { useState } from 'react'
 import { Alert, Button, Group, Loader, Modal, Stack, Text, TextInput } from '@mantine/core'
 import { useQuery } from '@tanstack/react-query'
+import { useState } from 'react'
 import { api, isConflict } from '../api/client'
 import type { SearchResult } from '../api/types'
 import { ReleaseTable } from './ReleaseTable'
@@ -119,7 +119,9 @@ function Form({ request, mode, onClose, onApprove }: Props & { request: ApproveT
         </Alert>
       )}
       {search.isLoading && <Loader size="sm" />}
-      {search.data && <ReleaseTable results={search.data} onSelect={setChosen} selectable={canPick} actionLabel="Use" />}
+      {search.data && (
+        <ReleaseTable results={search.data} onSelect={setChosen} selectable={canPick} actionLabel="Use" />
+      )}
       {chosen && (
         <Group gap="xs">
           <Text size="sm">Replacement: {chosen.title}</Text>

@@ -1,6 +1,6 @@
-import { useState } from 'react'
 import { Alert, Button, Group, Loader, Modal, Stack, Table, Text, TextInput, Title } from '@mantine/core'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useState } from 'react'
 import { api } from '../../api/client'
 import type { PathMapping } from '../../api/types'
 import { ConfirmDialog } from '../../components/ConfirmDialog'
@@ -24,7 +24,10 @@ function MappingModal({ editing, onClose }: { editing: PathMapping | 'new'; onCl
     },
     onError: (err) => setError(messageOf(err)),
   })
-  const field = (k: keyof Draft) => ({ value: draft[k], onChange: (e: { currentTarget: { value: string } }) => setDraft({ ...draft, [k]: e.currentTarget.value }) })
+  const field = (k: keyof Draft) => ({
+    value: draft[k],
+    onChange: (e: { currentTarget: { value: string } }) => setDraft({ ...draft, [k]: e.currentTarget.value }),
+  })
 
   return (
     <Modal opened onClose={onClose} title={editing === 'new' ? 'Add path mapping' : 'Edit path mapping'}>
@@ -37,12 +40,24 @@ function MappingModal({ editing, onClose }: { editing: PathMapping | 'new'; onCl
       >
         <Stack gap="sm">
           <TextInput label="Host" description="The download client host this applies to." {...field('host')} />
-          <TextInput label="Remote path" description="The path as the download client sees it." {...field('remotePath')} />
+          <TextInput
+            label="Remote path"
+            description="The path as the download client sees it."
+            {...field('remotePath')}
+          />
           <TextInput label="Local path" description="The same folder as softwarr sees it." {...field('localPath')} />
-          {error && <Alert color="red" role="alert">{error}</Alert>}
+          {error && (
+            <Alert color="red" role="alert">
+              {error}
+            </Alert>
+          )}
           <Group justify="flex-end">
-            <Button variant="default" onClick={onClose}>Cancel</Button>
-            <Button type="submit" loading={save.isPending}>Save</Button>
+            <Button variant="default" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button type="submit" loading={save.isPending}>
+              Save
+            </Button>
           </Group>
         </Stack>
       </form>
@@ -86,8 +101,23 @@ export function PathMappingSettings() {
                 <Table.Td>{m.localPath}</Table.Td>
                 <Table.Td>
                   <Group gap="xs" justify="flex-end">
-                    <Button variant="default" size="compact-xs" aria-label={`Edit mapping for ${m.host}`} onClick={() => setEditing(m)}>Edit</Button>
-                    <Button variant="default" color="red" size="compact-xs" aria-label={`Delete mapping for ${m.host}`} onClick={() => setDeleting(m)}>Delete</Button>
+                    <Button
+                      variant="default"
+                      size="compact-xs"
+                      aria-label={`Edit mapping for ${m.host}`}
+                      onClick={() => setEditing(m)}
+                    >
+                      Edit
+                    </Button>
+                    <Button
+                      variant="default"
+                      color="red"
+                      size="compact-xs"
+                      aria-label={`Delete mapping for ${m.host}`}
+                      onClick={() => setDeleting(m)}
+                    >
+                      Delete
+                    </Button>
                   </Group>
                 </Table.Td>
               </Table.Tr>

@@ -1,6 +1,6 @@
-import { useState } from 'react'
 import { Alert, Badge, Group, Loader, SegmentedControl, Stack, Table, Text, Title } from '@mantine/core'
 import { useQuery } from '@tanstack/react-query'
+import { useState } from 'react'
 import { api } from '../../api/client'
 import type { HealthCheck, HealthLevel, LogEntry } from '../../api/types'
 
@@ -61,11 +61,26 @@ export function SystemPage() {
         {status.data && (
           <Table w="auto">
             <Table.Tbody>
-              <Table.Tr><Table.Th>Version</Table.Th><Table.Td>{status.data.version}</Table.Td></Table.Tr>
-              <Table.Tr><Table.Th>Go version</Table.Th><Table.Td>{status.data.goVersion}</Table.Td></Table.Tr>
-              <Table.Tr><Table.Th>Data directory</Table.Th><Table.Td>{status.data.dataDir}</Table.Td></Table.Tr>
-              <Table.Tr><Table.Th>URL base</Table.Th><Table.Td>{status.data.urlBase || '/'}</Table.Td></Table.Tr>
-              <Table.Tr><Table.Th>Started</Table.Th><Table.Td>{new Date(status.data.startedAt).toLocaleString()}</Table.Td></Table.Tr>
+              <Table.Tr>
+                <Table.Th>Version</Table.Th>
+                <Table.Td>{status.data.version}</Table.Td>
+              </Table.Tr>
+              <Table.Tr>
+                <Table.Th>Go version</Table.Th>
+                <Table.Td>{status.data.goVersion}</Table.Td>
+              </Table.Tr>
+              <Table.Tr>
+                <Table.Th>Data directory</Table.Th>
+                <Table.Td>{status.data.dataDir}</Table.Td>
+              </Table.Tr>
+              <Table.Tr>
+                <Table.Th>URL base</Table.Th>
+                <Table.Td>{status.data.urlBase || '/'}</Table.Td>
+              </Table.Tr>
+              <Table.Tr>
+                <Table.Th>Started</Table.Th>
+                <Table.Td>{new Date(status.data.startedAt).toLocaleString()}</Table.Td>
+              </Table.Tr>
             </Table.Tbody>
           </Table>
         )}
@@ -91,16 +106,21 @@ export function SystemPage() {
               </Table.Thead>
               <Table.Tbody>
                 {rows.map((e, i) => (
+                  // biome-ignore lint/suspicious/noArrayIndexKey: log lines have no ID and the rows hold no state
                   <Table.Tr key={`${e.time}-${i}`}>
                     <Table.Td style={{ whiteSpace: 'nowrap' }}>{new Date(e.time).toLocaleTimeString()}</Table.Td>
                     <Table.Td>
-                      <Badge color={logColor(e.level)} variant="light">{e.level}</Badge>
+                      <Badge color={logColor(e.level)} variant="light">
+                        {e.level}
+                      </Badge>
                     </Table.Td>
                     <Table.Td>
                       {e.message}
                       {e.attrs && Object.keys(e.attrs).length > 0 && (
                         <Text size="xs" c="dimmed" ff="monospace">
-                          {Object.entries(e.attrs).map(([k, v]) => `${k}=${typeof v === 'string' ? v : JSON.stringify(v)}`).join(' ')}
+                          {Object.entries(e.attrs)
+                            .map(([k, v]) => `${k}=${typeof v === 'string' ? v : JSON.stringify(v)}`)
+                            .join(' ')}
                         </Text>
                       )}
                     </Table.Td>

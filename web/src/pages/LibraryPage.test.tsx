@@ -1,19 +1,32 @@
 import { screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { http, HttpResponse } from 'msw'
+import { HttpResponse, http } from 'msw'
 import { expect, test } from 'vitest'
 import type { LibraryItem } from '../api/types'
 import { makeUser, server } from '../test/server'
-import { renderApp, useApiServer } from '../test/utils'
+import { renderApp, setupApiServer } from '../test/utils'
 
-useApiServer()
+setupApiServer()
 
 function item(over: Partial<LibraryItem>): LibraryItem {
   return {
-    id: 1, title: 'Alpha app', releaseName: 'Alpha.App.1.0', totalSize: 1048576, protocol: 'torrent',
-    indexer: 'idx', requester: 'sam', comment: '', approver: 'root', importMode: 'hardlink',
-    retentionDays: null, importedAt: '2026-11-20T10:00:00Z', lastDownloadedAt: null, downloadCount: 0,
-    files: [{ path: 'a.bin', size: 1048576 }], expiresAt: null, ...over,
+    id: 1,
+    title: 'Alpha app',
+    releaseName: 'Alpha.App.1.0',
+    totalSize: 1048576,
+    protocol: 'torrent',
+    indexer: 'idx',
+    requester: 'sam',
+    comment: '',
+    approver: 'root',
+    importMode: 'hardlink',
+    retentionDays: null,
+    importedAt: '2026-11-20T10:00:00Z',
+    lastDownloadedAt: null,
+    downloadCount: 0,
+    files: [{ path: 'a.bin', size: 1048576 }],
+    expiresAt: null,
+    ...over,
   }
 }
 
@@ -41,7 +54,10 @@ test('library list filters by text', async () => {
 })
 
 test('download link points at download endpoint with url base', async () => {
-  server.use(me(), http.get('*/api/v1/library', () => HttpResponse.json([item({ id: 7 })])))
+  server.use(
+    me(),
+    http.get('*/api/v1/library', () => HttpResponse.json([item({ id: 7 })])),
+  )
   renderApp('/library')
   const row = (await screen.findByText('Alpha app')).closest('tr')!
   const link = within(row).getByRole('link', { name: 'Download' })
@@ -117,7 +133,9 @@ test('delete asks for confirmation then returns to the library', async () => {
   renderApp('/library/3')
   await screen.findByText('Never expires')
   await userEvent.click(screen.getByRole('button', { name: 'Delete' }))
-  expect(await screen.findByText("Delete this item from the library? Seeding files in the download client aren't affected.")).toBeInTheDocument()
+  expect(
+    await screen.findByText("Delete this item from the library? Seeding files in the download client aren't affected."),
+  ).toBeInTheDocument()
   await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Delete' }))
   await screen.findByText('Nothing in the library yet.')
   expect(deleted).toBe(true)
@@ -142,7 +160,10 @@ test('non-admin sees details but no edit or delete controls', async () => {
 })
 
 test('missing item shows a message', async () => {
-  server.use(me(), http.get('*/api/v1/library/:id', () => HttpResponse.json({ error: 'x' }, { status: 404 })))
+  server.use(
+    me(),
+    http.get('*/api/v1/library/:id', () => HttpResponse.json({ error: 'x' }, { status: 404 })),
+  )
   renderApp('/library/99')
   expect(await screen.findByText("That library item doesn't exist.")).toBeInTheDocument()
   expect(screen.getByRole('link', { name: 'Back to library' })).toHaveAttribute('href', '/library')

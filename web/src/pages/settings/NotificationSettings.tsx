@@ -1,6 +1,21 @@
-import { useState } from 'react'
-import { Alert, Badge, Button, Checkbox, Group, Loader, Modal, PasswordInput, Stack, Switch, Table, Text, TextInput, Title } from '@mantine/core'
+import {
+  Alert,
+  Badge,
+  Button,
+  Checkbox,
+  Group,
+  Loader,
+  Modal,
+  PasswordInput,
+  Stack,
+  Switch,
+  Table,
+  Text,
+  TextInput,
+  Title,
+} from '@mantine/core'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useState } from 'react'
 import { api } from '../../api/client'
 import type { Webhook } from '../../api/types'
 import { ConfirmDialog } from '../../components/ConfirmDialog'
@@ -38,7 +53,10 @@ function WebhookModal({ editing, onClose }: { editing: Webhook | 'new'; onClose:
     enabled,
   })
   const save = useMutation({
-    mutationFn: () => (existing ? api(`/webhooks/${existing.id}`, { method: 'PUT', json: body() }) : api('/webhooks', { method: 'POST', json: body() })),
+    mutationFn: () =>
+      existing
+        ? api(`/webhooks/${existing.id}`, { method: 'PUT', json: body() })
+        : api('/webhooks', { method: 'POST', json: body() }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['webhooks'] })
       onClose()
@@ -60,12 +78,20 @@ function WebhookModal({ editing, onClose }: { editing: Webhook | 'new'; onClose:
           <TextInput label="URL" placeholder="https://" value={url} onChange={(e) => setUrl(e.currentTarget.value)} />
           <PasswordInput
             label="Secret"
-            description={existing?.hasSecret ? 'A secret is set. Leave this blank to keep it.' : 'Optional. Used to sign each delivery.'}
+            description={
+              existing?.hasSecret
+                ? 'A secret is set. Leave this blank to keep it.'
+                : 'Optional. Used to sign each delivery.'
+            }
             value={secret}
             onChange={(e) => setSecret(e.currentTarget.value)}
           />
           {existing?.hasSecret && (
-            <Checkbox label="Remove the saved secret" checked={clearSecret} onChange={(e) => setClearSecret(e.currentTarget.checked)} />
+            <Checkbox
+              label="Remove the saved secret"
+              checked={clearSecret}
+              onChange={(e) => setClearSecret(e.currentTarget.checked)}
+            />
           )}
           <Checkbox.Group label="Events" value={events} onChange={setEvents}>
             <Stack gap={4} mt={4}>
@@ -75,15 +101,28 @@ function WebhookModal({ editing, onClose }: { editing: Webhook | 'new'; onClose:
             </Stack>
           </Checkbox.Group>
           <Switch label="Enabled" checked={enabled} onChange={(e) => setEnabled(e.currentTarget.checked)} />
-          {error && <Alert color="red" role="alert">{error}</Alert>}
+          {error && (
+            <Alert color="red" role="alert">
+              {error}
+            </Alert>
+          )}
           <Group>
-            <Button type="submit" loading={save.isPending}>Save</Button>
+            <Button type="submit" loading={save.isPending}>
+              Save
+            </Button>
             {existing ? (
-              <TestButton okText="Delivered." run={() => api<TestOutcome>(`/webhooks/${existing.id}/test`, { method: 'POST' })} />
+              <TestButton
+                okText="Delivered."
+                run={() => api<TestOutcome>(`/webhooks/${existing.id}/test`, { method: 'POST' })}
+              />
             ) : (
-              <Text size="xs" c="dimmed">Save the webhook to send a test.</Text>
+              <Text size="xs" c="dimmed">
+                Save the webhook to send a test.
+              </Text>
             )}
-            <Button variant="default" ml="auto" onClick={onClose}>Cancel</Button>
+            <Button variant="default" ml="auto" onClick={onClose}>
+              Cancel
+            </Button>
           </Group>
         </Stack>
       </form>
@@ -124,12 +163,29 @@ export function NotificationSettings() {
                 <Table.Td>{h.url}</Table.Td>
                 <Table.Td>{h.events.length}</Table.Td>
                 <Table.Td>
-                  <Badge color={h.enabled ? 'green' : 'gray'} variant="light">{h.enabled ? 'Enabled' : 'Disabled'}</Badge>
+                  <Badge color={h.enabled ? 'green' : 'gray'} variant="light">
+                    {h.enabled ? 'Enabled' : 'Disabled'}
+                  </Badge>
                 </Table.Td>
                 <Table.Td>
                   <Group gap="xs" justify="flex-end">
-                    <Button variant="default" size="compact-xs" aria-label={`Edit ${h.name}`} onClick={() => setEditing(h)}>Edit</Button>
-                    <Button variant="default" color="red" size="compact-xs" aria-label={`Delete ${h.name}`} onClick={() => setDeleting(h)}>Delete</Button>
+                    <Button
+                      variant="default"
+                      size="compact-xs"
+                      aria-label={`Edit ${h.name}`}
+                      onClick={() => setEditing(h)}
+                    >
+                      Edit
+                    </Button>
+                    <Button
+                      variant="default"
+                      color="red"
+                      size="compact-xs"
+                      aria-label={`Delete ${h.name}`}
+                      onClick={() => setDeleting(h)}
+                    >
+                      Delete
+                    </Button>
                   </Group>
                 </Table.Td>
               </Table.Tr>

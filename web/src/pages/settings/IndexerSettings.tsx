@@ -1,5 +1,5 @@
-import { useState } from 'react'
 import { Alert, Loader, MultiSelect, PasswordInput, TextInput } from '@mantine/core'
+import { useState } from 'react'
 import { api } from '../../api/client'
 import type { Settings } from '../../api/types'
 import { SectionForm } from './SectionForm'
@@ -42,9 +42,21 @@ function IndexerForm({ settings }: { settings: Settings }) {
           prowlarr: { url: url.trim(), apiKey: apiKey.trim(), categories: cats.map(Number).sort((a, b) => a - b) },
         }))
       }
-      actions={<TestButton okText="Prowlarr responded." run={() => api('/settings/prowlarr/test', { method: 'POST', json: { url: url.trim(), apiKey: apiKey.trim() } })} />}
+      actions={
+        <TestButton
+          okText="Prowlarr responded."
+          run={() =>
+            api('/settings/prowlarr/test', { method: 'POST', json: { url: url.trim(), apiKey: apiKey.trim() } })
+          }
+        />
+      }
     >
-      <TextInput label="Prowlarr URL" placeholder="http://prowlarr:9696" value={url} onChange={(e) => setUrl(e.currentTarget.value)} />
+      <TextInput
+        label="Prowlarr URL"
+        placeholder="http://prowlarr:9696"
+        value={url}
+        onChange={(e) => setUrl(e.currentTarget.value)}
+      />
       <PasswordInput label="API key" value={apiKey} onChange={(e) => setApiKey(e.currentTarget.value)} />
       <MultiSelect
         label="Categories"

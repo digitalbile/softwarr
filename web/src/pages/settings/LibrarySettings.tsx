@@ -1,5 +1,5 @@
-import { useState } from 'react'
 import { Alert, Loader, TextInput } from '@mantine/core'
+import { useState } from 'react'
 import type { Settings } from '../../api/types'
 import { SectionForm } from './SectionForm'
 import { useSaveSettings, useSettings } from './useSettings'

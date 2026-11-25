@@ -41,14 +41,24 @@ export function Shell() {
       to={to}
       label={label}
       leftSection={icon}
-      rightSection={badge ? <Badge size="xs" circle>{badge}</Badge> : undefined}
+      rightSection={
+        badge ? (
+          <Badge size="xs" circle>
+            {badge}
+          </Badge>
+        ) : undefined
+      }
       active={pathname === to || pathname.startsWith(`${to}/`)}
       onClick={close}
     />
   )
 
   return (
-    <AppShell header={{ height: 48 }} navbar={{ width: 220, breakpoint: 'sm', collapsed: { mobile: !opened } }} padding="md">
+    <AppShell
+      header={{ height: 48 }}
+      navbar={{ width: 220, breakpoint: 'sm', collapsed: { mobile: !opened } }}
+      padding="md"
+    >
       <AppShell.Header>
         <Group h="100%" px="md" justify="space-between">
           <Group gap="sm">

@@ -1,11 +1,11 @@
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { http, HttpResponse } from 'msw'
+import { HttpResponse, http } from 'msw'
 import { expect, test, vi } from 'vitest'
-import { FakeEventSource, renderApp, useApiServer } from './test/utils'
 import { makeUser, mustChangeGate, server } from './test/server'
+import { FakeEventSource, renderApp, setupApiServer } from './test/utils'
 
-useApiServer()
+setupApiServer()
 
 function signedInAs(over = {}) {
   server.use(http.get('*/api/v1/auth/me', () => HttpResponse.json(makeUser(over))))
@@ -29,7 +29,9 @@ test('login shows SSO button only when OIDC enabled', async () => {
   first.unmount()
 
   server.use(
-    http.get('*/api/v1/auth/oidc/config', () => HttpResponse.json({ enabled: true, buttonLabel: 'Sign in with Authentik' })),
+    http.get('*/api/v1/auth/oidc/config', () =>
+      HttpResponse.json({ enabled: true, buttonLabel: 'Sign in with Authentik' }),
+    ),
   )
   renderApp('/login')
   const link = await screen.findByRole('link', { name: 'Sign in with Authentik' })
@@ -118,7 +120,11 @@ test('admin sidebar shows admin links and the pending count', async () => {
   signedInAs({ isAdmin: true })
   server.use(
     http.get('*/api/v1/requests', () =>
-      HttpResponse.json([{ id: 1, status: 'pending' }, { id: 2, status: 'pending' }, { id: 3, status: 'available' }]),
+      HttpResponse.json([
+        { id: 1, status: 'pending' },
+        { id: 2, status: 'pending' },
+        { id: 3, status: 'available' },
+      ]),
     ),
   )
   renderApp('/search')
@@ -134,9 +140,7 @@ test('non-admin cannot open admin routes', async () => {
 })
 
 test('profile hides Connect SSO for owner and shows it for linkable users', async () => {
-  server.use(
-    http.get('*/api/v1/auth/oidc/config', () => HttpResponse.json({ enabled: true, buttonLabel: 'SSO' })),
-  )
+  server.use(http.get('*/api/v1/auth/oidc/config', () => HttpResponse.json({ enabled: true, buttonLabel: 'SSO' })))
   signedInAs({ isOwner: true, isAdmin: true })
   const first = renderApp('/profile')
   await screen.findByRole('heading', { name: 'Profile' })
@@ -190,7 +194,17 @@ test('bell shows unread count and marks all as read', async () => {
   server.use(
     http.get('*/api/v1/notifications', ({ request }) => {
       const unread = new URL(request.url).searchParams.get('unread') === '1'
-      const all = [{ id: 1, type: 'request.approved', message: 'Your request was approved.', requestId: 1, itemId: null, read: false, createdAt: 1700000000 }]
+      const all = [
+        {
+          id: 1,
+          type: 'request.approved',
+          message: 'Your request was approved.',
+          requestId: 1,
+          itemId: null,
+          read: false,
+          createdAt: 1700000000,
+        },
+      ]
       return HttpResponse.json(unread ? all : all)
     }),
     http.post('*/api/v1/notifications/read', async ({ request }) => {
@@ -252,7 +266,9 @@ test('a closed stream for a signed-out user goes to login without reopening', as
     renderApp('/search')
     await screen.findByRole('heading', { name: 'Search' })
     await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1))
-    server.use(http.get('*/api/v1/auth/me', () => HttpResponse.json({ error: 'Sign in to continue.' }, { status: 401 })))
+    server.use(
+      http.get('*/api/v1/auth/me', () => HttpResponse.json({ error: 'Sign in to continue.' }, { status: 401 })),
+    )
 
     FakeEventSource.instances[0].fail()
     expect(await screen.findByText('Sign in to softwarr')).toBeInTheDocument()
