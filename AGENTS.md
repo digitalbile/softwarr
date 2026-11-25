@@ -60,7 +60,7 @@ Run all copy through the [humanizer](https://github.com/blader/humanizer) plugin
 
 The plugin's rules that come up most here: no em dashes, no "not X but Y" contrasts, sentence-case headings, and no bold labels at the start of list items. UI text and error messages are plain and short.
 
-The README stays short: what softwarr is, the current limits, the quick start, and links. Detail for people running softwarr goes in a page under `docs/`, such as `docs/installation.md`, linked from the README's Documentation list. When a change affects how people run or configure softwarr, update the page that covers it.
+The README stays short: what softwarr is, the current limits, the quick start, and links. Documentation for people running softwarr lives in the [wiki](https://github.com/digitalbile/softwarr/wiki), and `docs/` is for people and agents working on the code. The wiki isn't versioned with the code, so a page should describe the latest release. When a change affects how people run or configure softwarr, say in the pull request which wiki page needs updating; the maintainer updates it when the change is released.
 
 ## CI, images and releases
 

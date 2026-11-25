@@ -84,7 +84,7 @@ Changes to the API need the matching change in `web/src/api/types.ts` in the sam
 
 Run UI text, error messages, docs, commit messages and pull request descriptions through the [humanizer](https://github.com/blader/humanizer) plugin. User-facing text is plain and short and uses no em dashes. Error messages that users see are full sentences.
 
-Keep the README short. Documentation for people running softwarr goes in a page under `docs/`, linked from the README.
+Keep the README short. Documentation for people running softwarr lives in the [wiki](https://github.com/digitalbile/softwarr/wiki), and describes the latest release. If your change affects it, say in the pull request which page needs updating.
 
 ## Using AI tools
 

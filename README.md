@@ -13,16 +13,19 @@ Current limits:
 
 You need qBittorrent and Prowlarr already running.
 
-1. Add the softwarr service from the [installation guide](docs/installation.md#docker-compose) to your compose file. Set its host paths and its `PUID` and `PGID` to match qBittorrent.
+1. Add the softwarr service from the [installation guide](https://github.com/digitalbile/softwarr/wiki/Installation#docker-compose) to your compose file. Set its host paths and its `PUID` and `PGID` to match qBittorrent.
 2. Run `docker compose up -d`.
 3. Open `http://localhost:7979`. The first-run wizard creates the owner account.
 4. In Settings, add Prowlarr and qBittorrent, then set the library root path.
 
 ## Documentation
 
-- [Installation](docs/installation.md): image tags, environment variables, volumes, permissions, and hardlinks
-- [Authentication](docs/authentication.md): OIDC sign-in and recovering the owner account
-- [Contributing](CONTRIBUTING.md): setting up for development and opening a pull request
+The [wiki](https://github.com/digitalbile/softwarr/wiki) covers running softwarr:
+
+- [Installation](https://github.com/digitalbile/softwarr/wiki/Installation): the compose service, image tags, environment variables, volumes, permissions, and hardlinks
+- [Authentication](https://github.com/digitalbile/softwarr/wiki/Authentication): OIDC sign-in and recovering the owner account
+
+To work on the code, start with [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 

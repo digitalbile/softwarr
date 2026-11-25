@@ -1,6 +1,6 @@
 # Architecture
 
-This is a map of the code for people changing it. The README and `docs/installation.md` cover running softwarr, and `docs/superpowers/specs/2026-11-23-softwarr-design.md` explains why it works the way it does.
+This is a map of the code for people changing it. The README and the [wiki](https://github.com/digitalbile/softwarr/wiki) cover running softwarr, and `docs/superpowers/specs/2026-11-23-softwarr-design.md` explains why it works the way it does.
 
 softwarr is one Go binary. It serves a JSON API under `/api/v1` and the React UI, which is embedded into the binary from `web/dist`. Data lives in one SQLite file.
 
