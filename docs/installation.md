@@ -1,6 +1,32 @@
 # Installation
 
-The README's quick start gets softwarr running with `deploy/compose.example.yaml`. This page covers the details you need to run it for real.
+softwarr runs as one Docker container next to your qBittorrent and Prowlarr.
+
+## Docker Compose
+
+Add this service to your compose file:
+
+```yaml
+services:
+  softwarr:
+    image: ghcr.io/digitalbile/softwarr:latest
+    container_name: softwarr
+    environment:
+      PUID: "1000"
+      PGID: "1000"
+      UMASK: "022"
+      TZ: Etc/UTC
+    volumes:
+      - ./config/softwarr:/config
+      - /srv/data:/data
+    ports:
+      - "7979:7979"
+    restart: unless-stopped
+```
+
+Change `/srv/data` to the host folder that holds your downloads, and mount the same folder at `/data` in qBittorrent. Save torrents to `/data/torrents` in qBittorrent and set softwarr's library root path to `/data/library`. Give softwarr the same `PUID`, `PGID`, and `UMASK` as qBittorrent. [Hardlinks](#hardlinks) explains why both matter.
+
+Start it with `docker compose up -d` and open `http://localhost:7979`. The first-run wizard creates the owner account. Then add Prowlarr and qBittorrent in Settings. If they're in the same compose file, use their service names as hosts, such as `http://prowlarr:9696` and `http://qbittorrent:8080`.
 
 ## Image tags
 
@@ -40,7 +66,7 @@ softwarr does not change ownership of your downloads or library folders.
 
 By default softwarr imports finished torrents by hardlinking them into the library, so the library copy takes no extra space and the torrent keeps seeding. This works only when:
 
-- The download folder and the library are on the same filesystem, and in a container, under the same mount. The compose example mounts one `/data` folder and uses `/data/torrents` and `/data/library` inside it.
+- The download folder and the library are on the same filesystem, and in a container, under the same mount. The compose service above mounts one `/data` folder and uses `/data/torrents` and `/data/library` inside it. Don't mount `/data/torrents` and `/data/library` as separate volumes, because hardlinks fail across mounts.
 - softwarr runs as the same user as qBittorrent. Linux's default `fs.protected_hardlinks=1` refuses to hardlink files the linking user can't write. Give both containers the same `PUID`, `PGID`, and `UMASK`.
 
 If hardlinking fails, softwarr copies the files instead and shows a warning on the System page.
