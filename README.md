@@ -12,7 +12,7 @@ Current limits:
 ## Quick start
 
 1. Copy `deploy/compose.example.yaml` to a folder on your server and adjust the host paths and the `PUID` and `PGID` values. The example runs softwarr, qBittorrent, and Prowlarr.
-2. Build the image from a clone of this repository with `make docker`, or point the `image:` line at your own registry.
+2. The example pulls `ghcr.io/digitalbile/softwarr:latest`, the newest release. Use the `main` tag to follow the main branch, or a version tag such as `0.1.0` to stay on one release. Images are published for amd64 and arm64. To build the image yourself, run `make docker` in a clone of this repository.
 3. Run `docker compose -f compose.example.yaml up -d`.
 4. Open `http://localhost:7979`. The first-run wizard creates the owner account.
 5. In Settings, add Prowlarr and qBittorrent, then set the library root path.
@@ -88,6 +88,8 @@ make smoke    # build the image and run the end-to-end check
 ```
 
 The web UI tests run with `cd web && npx vitest run`.
+
+GitHub Actions runs the tests on every push and pull request. A push to `main` publishes the `main` image. To publish a release, push a version tag such as `v0.1.0`. That publishes `0.1.0`, `0.1`, and `latest`.
 
 ## License
 
