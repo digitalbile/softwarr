@@ -30,7 +30,7 @@ SOFTWARR_DATA_DIR=./data ./softwarr
 
 softwarr is then at `http://localhost:7979`. To work on the UI with hot reload, keep the server running and start Vite in another terminal with `cd web && npm run dev`. Vite sends `/api` requests to port 7979.
 
-To test against real services, run Prowlarr and qBittorrent from `deploy/compose.example.yaml` and point softwarr at them in Settings. Use test instances, never ones that seed for a private tracker.
+To test against real services, run test instances of Prowlarr and qBittorrent and point softwarr at them in Settings. Never use ones that seed for a private tracker.
 
 ## Making a change
 

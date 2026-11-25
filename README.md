@@ -11,10 +11,12 @@ Current limits:
 
 ## Quick start
 
-1. Copy `deploy/compose.example.yaml` to a folder on your server and adjust the host paths and the `PUID` and `PGID` values. The example runs softwarr, qBittorrent, and Prowlarr.
-2. Run `docker compose -f compose.example.yaml up -d`.
+You need qBittorrent and Prowlarr already running.
+
+1. Add the softwarr service from the [installation guide](docs/installation.md#docker-compose) to your compose file. Set its host paths and its `PUID` and `PGID` to match qBittorrent.
+2. Run `docker compose up -d`.
 3. Open `http://localhost:7979`. The first-run wizard creates the owner account.
-4. In Settings, add Prowlarr (`http://prowlarr:9696`) and qBittorrent (`http://qbittorrent:8080`), then set the library root path.
+4. In Settings, add Prowlarr and qBittorrent, then set the library root path.
 
 ## Documentation
 
