@@ -84,6 +84,8 @@ Changes to the API need the matching change in `web/src/api/types.ts` in the sam
 
 Run UI text, error messages, docs, commit messages and pull request descriptions through the [humanizer](https://github.com/blader/humanizer) plugin. User-facing text is plain and short and uses no em dashes. Error messages that users see are full sentences.
 
+Keep the README short. Documentation for people running softwarr goes in a page under `docs/`, linked from the README.
+
 ## Using AI tools
 
 AI coding agents are welcome here. Point yours at [AGENTS.md](AGENTS.md); Claude Code reads it through `CLAUDE.md`. Whoever opens the pull request is responsible for every line in it:
@@ -103,4 +105,4 @@ Search the issues first. A useful report has:
 
 ## Releases
 
-The maintainer cuts releases by pushing a version tag such as `v0.2.0` to `main`. The CD workflow publishes the images. Don't change version numbers or push tags in a pull request.
+The maintainer cuts releases by pushing a version tag such as `v0.2.0` to `main`, and the CD workflow publishes the images. [docs/ci-and-releases.md](docs/ci-and-releases.md) has the details. Don't change version numbers or push tags in a pull request.

@@ -60,7 +60,11 @@ Run all copy through the [humanizer](https://github.com/blader/humanizer) plugin
 
 The plugin's rules that come up most here: no em dashes, no "not X but Y" contrasts, sentence-case headings, and no bold labels at the start of list items. UI text and error messages are plain and short.
 
+The README stays short: what softwarr is, the current limits, the quick start, and links. Detail for people running softwarr goes in a page under `docs/`, such as `docs/installation.md`, linked from the README's Documentation list. When a change affects how people run or configure softwarr, update the page that covers it.
+
 ## CI, images and releases
+
+Read [docs/ci-and-releases.md](docs/ci-and-releases.md) before changing anything under `.github/`, the `Dockerfile`, or `docker/`.
 
 - Every `uses:` in a workflow is pinned to a full commit SHA with its version in a comment, and base images are pinned by digest. Renovate updates the pins. Keep new ones in the same form.
 - A release is a version tag (`v0.1.0`) pushed to `main`. The CD workflow builds and publishes the images. Agents never push tags, publish releases, or push to `main`.
