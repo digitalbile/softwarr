@@ -1,6 +1,6 @@
+import { Button, Table, Text, UnstyledButton } from '@mantine/core'
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router'
-import { Button, Table, Text, UnstyledButton } from '@mantine/core'
 import type { SearchResult } from '../api/types'
 import { formatAge, formatBytes, formatCategories } from '../format'
 import { StatusBadge } from './StatusBadge'
@@ -14,7 +14,17 @@ const sortValue: Record<SortKey, (r: SearchResult) => string | number> = {
   peers: (r) => r.seeders ?? r.grabs ?? -1,
 }
 
-function Header({ label, k, sort, onSort }: { label: string; k: SortKey; sort: { key: SortKey; dir: 1 | -1 }; onSort(k: SortKey): void }) {
+function Header({
+  label,
+  k,
+  sort,
+  onSort,
+}: {
+  label: string
+  k: SortKey
+  sort: { key: SortKey; dir: 1 | -1 }
+  onSort(k: SortKey): void
+}) {
   const active = sort.key === k
   return (
     <Table.Th aria-sort={active ? (sort.dir === 1 ? 'ascending' : 'descending') : 'none'}>
@@ -40,7 +50,12 @@ interface Props {
   actionLabel?: string
 }
 
-export function ReleaseTable({ results, onSelect, selectable = (r) => r.status === 'requestable', actionLabel = 'Request' }: Props) {
+export function ReleaseTable({
+  results,
+  onSelect,
+  selectable = (r) => r.status === 'requestable',
+  actionLabel = 'Request',
+}: Props) {
   // Newest first by default, so a larger age timestamp sorts first.
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: 'age', dir: -1 })
   const rows = useMemo(() => {

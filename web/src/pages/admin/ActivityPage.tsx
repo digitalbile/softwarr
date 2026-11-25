@@ -1,6 +1,6 @@
-import { useState } from 'react'
 import { Alert, Badge, Button, Group, Loader, Modal, Progress, Stack, Table, Text, Title } from '@mantine/core'
 import { useQuery } from '@tanstack/react-query'
+import { useState } from 'react'
 import { api, isConflict } from '../../api/client'
 import type { Activity } from '../../api/types'
 import { ApproveDialog } from '../../components/ApproveDialog'
@@ -85,7 +85,11 @@ export function ActivityPage() {
                       <Group gap="xs" wrap="nowrap">
                         {a.status === 'failed' && (
                           <>
-                            <Button size="compact-xs" onClick={() => run(a.requestId, 'retry')} aria-label={`Retry ${a.title}`}>
+                            <Button
+                              size="compact-xs"
+                              onClick={() => run(a.requestId, 'retry')}
+                              aria-label={`Retry ${a.title}`}
+                            >
                               Retry
                             </Button>
                             <Button
@@ -99,7 +103,12 @@ export function ActivityPage() {
                           </>
                         )}
                         {['approved', 'downloading', 'failed'].includes(a.status) && (
-                          <Button size="compact-xs" variant="default" onClick={() => setAbandoning(a)} aria-label={`Abandon ${a.title}`}>
+                          <Button
+                            size="compact-xs"
+                            variant="default"
+                            onClick={() => setAbandoning(a)}
+                            aria-label={`Abandon ${a.title}`}
+                          >
                             Abandon
                           </Button>
                         )}

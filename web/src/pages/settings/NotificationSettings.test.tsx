@@ -1,11 +1,11 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { http, HttpResponse } from 'msw'
+import { HttpResponse, http } from 'msw'
 import { expect, test } from 'vitest'
 import { makeUser, server } from '../../test/server'
-import { renderApp, useApiServer } from '../../test/utils'
+import { renderApp, setupApiServer } from '../../test/utils'
 
-useApiServer()
+setupApiServer()
 
 function setup(hooks: unknown[] = []) {
   server.use(
@@ -18,7 +18,12 @@ function setup(hooks: unknown[] = []) {
 test('webhook form sends selected events', async () => {
   let sent: Record<string, unknown> = {}
   setup()
-  server.use(http.post('*/api/v1/webhooks', async ({ request }) => { sent = (await request.json()) as Record<string, unknown>; return HttpResponse.json({}, { status: 201 }) }))
+  server.use(
+    http.post('*/api/v1/webhooks', async ({ request }) => {
+      sent = (await request.json()) as Record<string, unknown>
+      return HttpResponse.json({}, { status: 201 })
+    }),
+  )
   await userEvent.click(await screen.findByRole('button', { name: 'Add webhook' }))
   const dialog = await screen.findByRole('dialog')
   await userEvent.type(within(dialog).getByLabelText('Name'), 'Discord')
@@ -39,8 +44,15 @@ test('webhook form sends selected events', async () => {
 
 test('existing secret is kept unless cleared', async () => {
   let sent: Record<string, unknown> = {}
-  setup([{ id: 5, name: 'Hook', url: 'https://h.example.com', hasSecret: true, events: ['item.expired'], enabled: true }])
-  server.use(http.put('*/api/v1/webhooks/5', async ({ request }) => { sent = (await request.json()) as Record<string, unknown>; return HttpResponse.json({}) }))
+  setup([
+    { id: 5, name: 'Hook', url: 'https://h.example.com', hasSecret: true, events: ['item.expired'], enabled: true },
+  ])
+  server.use(
+    http.put('*/api/v1/webhooks/5', async ({ request }) => {
+      sent = (await request.json()) as Record<string, unknown>
+      return HttpResponse.json({})
+    }),
+  )
   await userEvent.click(await screen.findByRole('button', { name: 'Edit Hook' }))
   const dialog = await screen.findByRole('dialog')
   expect(within(dialog).getByText('A secret is set. Leave this blank to keep it.')).toBeInTheDocument()

@@ -39,7 +39,7 @@ export class FakeEventSource {
 }
 
 // Call once at the top of a test file.
-export function useApiServer() {
+export function setupApiServer() {
   beforeAll(() => {
     server.listen()
     const real = globalThis.fetch

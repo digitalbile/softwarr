@@ -1,6 +1,22 @@
-import { useState } from 'react'
-import { Alert, Badge, Button, Group, Loader, Modal, NumberInput, PasswordInput, Select, Stack, Switch, Table, Text, TextInput, Title } from '@mantine/core'
+import {
+  Alert,
+  Badge,
+  Button,
+  Group,
+  Loader,
+  Modal,
+  NumberInput,
+  PasswordInput,
+  Select,
+  Stack,
+  Switch,
+  Table,
+  Text,
+  TextInput,
+  Title,
+} from '@mantine/core'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useState } from 'react'
 import { api } from '../../api/client'
 import type { DownloadClient } from '../../api/types'
 import { ConfirmDialog } from '../../components/ConfirmDialog'
@@ -17,7 +33,15 @@ function str(v: unknown, fallback = '') {
   return typeof v === 'string' ? v : fallback
 }
 
-function ClientModal({ editing, types, onClose }: { editing: DownloadClient | 'new'; types: ClientType[]; onClose: () => void }) {
+function ClientModal({
+  editing,
+  types,
+  onClose,
+}: {
+  editing: DownloadClient | 'new'
+  types: ClientType[]
+  onClose: () => void
+}) {
   const queryClient = useQueryClient()
   const existing = editing === 'new' ? null : editing
   const s = existing?.settings ?? {}
@@ -39,11 +63,22 @@ function ClientModal({ editing, types, onClose }: { editing: DownloadClient | 'n
     type: type ?? '',
     enabled,
     priority: Number(priority) || 0,
-    settings: { host: host.trim(), port: Number(port) || 0, useTls, urlBase: urlBase.trim(), username, password, category: category.trim() },
+    settings: {
+      host: host.trim(),
+      port: Number(port) || 0,
+      useTls,
+      urlBase: urlBase.trim(),
+      username,
+      password,
+      category: category.trim(),
+    },
   })
 
   const save = useMutation({
-    mutationFn: () => (existing ? api(`/downloadclients/${existing.id}`, { method: 'PUT', json: body() }) : api('/downloadclients', { method: 'POST', json: body() })),
+    mutationFn: () =>
+      existing
+        ? api(`/downloadclients/${existing.id}`, { method: 'PUT', json: body() })
+        : api('/downloadclients', { method: 'POST', json: body() }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['downloadclients'] })
       onClose()
@@ -75,21 +110,48 @@ function ClientModal({ editing, types, onClose }: { editing: DownloadClient | 'n
             <NumberInput label="Port" min={1} max={65535} allowDecimal={false} value={port} onChange={setPort} />
           </Group>
           <Switch label="Use TLS" checked={useTls} onChange={(e) => setUseTls(e.currentTarget.checked)} />
-          <TextInput label="URL base" description="Only needed behind a reverse proxy path." value={urlBase} onChange={(e) => setUrlBase(e.currentTarget.value)} />
+          <TextInput
+            label="URL base"
+            description="Only needed behind a reverse proxy path."
+            value={urlBase}
+            onChange={(e) => setUrlBase(e.currentTarget.value)}
+          />
           <Group grow align="flex-start">
             <TextInput label="Username" value={username} onChange={(e) => setUsername(e.currentTarget.value)} />
             <PasswordInput label="Password" value={password} onChange={(e) => setPassword(e.currentTarget.value)} />
           </Group>
           <TextInput label="Category" value={category} onChange={(e) => setCategory(e.currentTarget.value)} />
           <Group grow align="flex-start">
-            <NumberInput label="Priority" description="Lower numbers are tried first." min={0} allowDecimal={false} value={priority} onChange={setPriority} />
+            <NumberInput
+              label="Priority"
+              description="Lower numbers are tried first."
+              min={0}
+              allowDecimal={false}
+              value={priority}
+              onChange={setPriority}
+            />
             <Switch mt={28} label="Enabled" checked={enabled} onChange={(e) => setEnabled(e.currentTarget.checked)} />
           </Group>
-          {error && <Alert color="red" role="alert">{error}</Alert>}
+          {error && (
+            <Alert color="red" role="alert">
+              {error}
+            </Alert>
+          )}
           <Group>
-            <Button type="submit" loading={save.isPending}>Save</Button>
-            <TestButton run={() => api('/downloadclients/test', { method: 'POST', json: { ...body(), ...(existing ? { id: existing.id } : {}) } })} />
-            <Button variant="default" ml="auto" onClick={onClose}>Cancel</Button>
+            <Button type="submit" loading={save.isPending}>
+              Save
+            </Button>
+            <TestButton
+              run={() =>
+                api('/downloadclients/test', {
+                  method: 'POST',
+                  json: { ...body(), ...(existing ? { id: existing.id } : {}) },
+                })
+              }
+            />
+            <Button variant="default" ml="auto" onClick={onClose}>
+              Cancel
+            </Button>
           </Group>
         </Stack>
       </form>
@@ -102,17 +164,24 @@ export function DownloadClientSettings() {
   const [editing, setEditing] = useState<DownloadClient | 'new' | null>(null)
   const [deleting, setDeleting] = useState<DownloadClient | null>(null)
   const list = useQuery({ queryKey: ['downloadclients'], queryFn: () => api<DownloadClient[]>('/downloadclients') })
-  const types = useQuery({ queryKey: ['downloadclients', 'types'], queryFn: () => api<ClientType[]>('/downloadclients/types') })
+  const types = useQuery({
+    queryKey: ['downloadclients', 'types'],
+    queryFn: () => api<ClientType[]>('/downloadclients/types'),
+  })
 
   return (
     <Stack gap="sm">
       <Group justify="space-between">
         <Title order={4}>Download clients</Title>
-        <Button onClick={() => setEditing('new')} disabled={!types.data}>Add client</Button>
+        <Button onClick={() => setEditing('new')} disabled={!types.data}>
+          Add client
+        </Button>
       </Group>
       {list.error && <Alert color="red">{list.error.message}</Alert>}
       {list.isLoading && <Loader size="sm" />}
-      {list.data?.length === 0 && <Text c="dimmed">No download clients yet. Add one so approved requests can download.</Text>}
+      {list.data?.length === 0 && (
+        <Text c="dimmed">No download clients yet. Add one so approved requests can download.</Text>
+      )}
       {!!list.data?.length && (
         <Table>
           <Table.Thead>
@@ -133,12 +202,29 @@ export function DownloadClientSettings() {
                 <Table.Td>{c.protocol}</Table.Td>
                 <Table.Td>{c.priority}</Table.Td>
                 <Table.Td>
-                  <Badge color={c.enabled ? 'green' : 'gray'} variant="light">{c.enabled ? 'Enabled' : 'Disabled'}</Badge>
+                  <Badge color={c.enabled ? 'green' : 'gray'} variant="light">
+                    {c.enabled ? 'Enabled' : 'Disabled'}
+                  </Badge>
                 </Table.Td>
                 <Table.Td>
                   <Group gap="xs" justify="flex-end">
-                    <Button variant="default" size="compact-xs" aria-label={`Edit ${c.name}`} onClick={() => setEditing(c)}>Edit</Button>
-                    <Button variant="default" color="red" size="compact-xs" aria-label={`Delete ${c.name}`} onClick={() => setDeleting(c)}>Delete</Button>
+                    <Button
+                      variant="default"
+                      size="compact-xs"
+                      aria-label={`Edit ${c.name}`}
+                      onClick={() => setEditing(c)}
+                    >
+                      Edit
+                    </Button>
+                    <Button
+                      variant="default"
+                      color="red"
+                      size="compact-xs"
+                      aria-label={`Delete ${c.name}`}
+                      onClick={() => setDeleting(c)}
+                    >
+                      Delete
+                    </Button>
                   </Group>
                 </Table.Td>
               </Table.Tr>

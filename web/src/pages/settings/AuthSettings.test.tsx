@@ -1,12 +1,12 @@
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { http, HttpResponse } from 'msw'
+import { HttpResponse, http } from 'msw'
 import { expect, test } from 'vitest'
 import type { Settings } from '../../api/types'
 import { makeSettings, makeUser, server } from '../../test/server'
-import { renderApp, useApiServer } from '../../test/utils'
+import { renderApp, setupApiServer } from '../../test/utils'
 
-useApiServer()
+setupApiServer()
 
 function setup(settings: Settings) {
   server.use(
@@ -20,7 +20,9 @@ test('OIDC cannot be enabled without external URL', async () => {
   setup(makeSettings())
   const toggle = await screen.findByRole('switch', { name: 'Enable single sign-on' })
   expect(toggle).toBeDisabled()
-  expect(screen.getByText('Set the external URL in General settings before enabling single sign-on.')).toBeInTheDocument()
+  expect(
+    screen.getByText('Set the external URL in General settings before enabling single sign-on.'),
+  ).toBeInTheDocument()
 })
 
 test('redirect URI shown from external URL', async () => {
@@ -33,7 +35,12 @@ test('saving sends the whole settings object with the OIDC changes merged', asyn
   let body: Settings | undefined
   const current = makeSettings({ externalUrl: 'https://soft.example.com', libraryRoot: '/data' })
   setup(current)
-  server.use(http.put('*/api/v1/settings', async ({ request }) => { body = (await request.json()) as Settings; return HttpResponse.json(body) }))
+  server.use(
+    http.put('*/api/v1/settings', async ({ request }) => {
+      body = (await request.json()) as Settings
+      return HttpResponse.json(body)
+    }),
+  )
   await userEvent.type(await screen.findByLabelText('Issuer URL'), 'https://idp.example.com')
   await userEvent.click(screen.getByRole('button', { name: 'Save' }))
   await waitFor(() => expect(body).toBeDefined())

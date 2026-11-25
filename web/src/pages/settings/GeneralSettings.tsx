@@ -1,6 +1,6 @@
-import { useState } from 'react'
 import { Alert, Button, CopyButton, Group, Loader, NumberInput, Switch, TextInput } from '@mantine/core'
 import { useQueryClient } from '@tanstack/react-query'
+import { useState } from 'react'
 import { api } from '../../api/client'
 import type { Settings } from '../../api/types'
 import { ConfirmDialog } from '../../components/ConfirmDialog'

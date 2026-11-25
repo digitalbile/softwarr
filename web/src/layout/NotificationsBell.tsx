@@ -25,7 +25,11 @@ export function NotificationsBell() {
   return (
     <Popover position="bottom-end" width={340} shadow="md">
       <Popover.Target>
-        <ActionIcon variant="subtle" color="gray" aria-label={count > 0 ? `Notifications, ${count} unread` : 'Notifications'}>
+        <ActionIcon
+          variant="subtle"
+          color="gray"
+          aria-label={count > 0 ? `Notifications, ${count} unread` : 'Notifications'}
+        >
           <IconBell size={18} />
           {count > 0 && (
             <Badge size="xs" circle color="red" pos="absolute" top={-4} right={-4}>

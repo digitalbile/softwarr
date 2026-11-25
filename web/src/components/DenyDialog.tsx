@@ -1,5 +1,5 @@
-import { useState } from 'react'
 import { Alert, Button, Group, Modal, Stack, Text, Textarea } from '@mantine/core'
+import { useState } from 'react'
 import { isConflict } from '../api/client'
 import type { Request } from '../api/types'
 
@@ -47,7 +47,12 @@ function Form({ request, onClose, onDeny }: Props & { request: Request }) {
           </Alert>
         )}
         <Text fw={500}>{request.displayTitle || request.release.title}</Text>
-        <Textarea label="Reason (optional)" value={reason} onChange={(e) => setReason(e.currentTarget.value)} rows={3} />
+        <Textarea
+          label="Reason (optional)"
+          value={reason}
+          onChange={(e) => setReason(e.currentTarget.value)}
+          rows={3}
+        />
         <Group justify="flex-end">
           <Button variant="default" onClick={onClose}>
             Cancel

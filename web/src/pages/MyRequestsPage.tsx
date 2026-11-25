@@ -68,7 +68,12 @@ export function MyRequestsPage() {
                   <Table.Td>{new Date(r.createdAt).toLocaleDateString()}</Table.Td>
                   <Table.Td>
                     {r.status === 'pending' && (
-                      <Button size="compact-xs" variant="default" onClick={() => cancel.mutate(r.id)} loading={cancel.isPending && cancel.variables === r.id}>
+                      <Button
+                        size="compact-xs"
+                        variant="default"
+                        onClick={() => cancel.mutate(r.id)}
+                        loading={cancel.isPending && cancel.variables === r.id}
+                      >
                         Cancel
                       </Button>
                     )}

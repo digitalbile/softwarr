@@ -52,7 +52,12 @@ export function LoginPage() {
             <Title order={3}>Sign in to softwarr</Title>
             {shown && <Alert color="red">{shown}</Alert>}
             <TextInput label="Username" autoComplete="username" required {...form.getInputProps('username')} />
-            <PasswordInput label="Password" autoComplete="current-password" required {...form.getInputProps('password')} />
+            <PasswordInput
+              label="Password"
+              autoComplete="current-password"
+              required
+              {...form.getInputProps('password')}
+            />
             <Button type="submit" loading={form.submitting}>
               Sign in
             </Button>

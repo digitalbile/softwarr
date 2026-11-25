@@ -1,7 +1,7 @@
-import { useState } from 'react'
 import { Alert, Button, Group, Modal, Stack, Text, Textarea } from '@mantine/core'
 import { notifications } from '@mantine/notifications'
 import { useMutation } from '@tanstack/react-query'
+import { useState } from 'react'
 import { api } from '../api/client'
 import type { Request, SearchResult } from '../api/types'
 import { formatBytes } from '../format'
@@ -26,7 +26,8 @@ function Form({ result, commentRequired, onClose, onRequested }: Props & { resul
   const [comment, setComment] = useState('')
   const [error, setError] = useState('')
   const create = useMutation({
-    mutationFn: () => api<Request>('/requests', { method: 'POST', json: { token: result.token, comment: comment.trim() } }),
+    mutationFn: () =>
+      api<Request>('/requests', { method: 'POST', json: { token: result.token, comment: comment.trim() } }),
     onSuccess: () => {
       notifications.show({ message: 'Request sent.', color: 'green' })
       onRequested(result)

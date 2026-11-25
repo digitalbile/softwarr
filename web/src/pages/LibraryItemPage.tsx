@@ -1,10 +1,23 @@
 import {
-  Alert, Anchor, Button, Card, Group, Loader, Modal, NumberInput, SegmentedControl, Stack, Table, Text, TextInput, Title,
+  Alert,
+  Anchor,
+  Button,
+  Card,
+  Group,
+  Loader,
+  Modal,
+  NumberInput,
+  SegmentedControl,
+  Stack,
+  Table,
+  Text,
+  TextInput,
+  Title,
 } from '@mantine/core'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
-import { api, ApiError, urlBase } from '../api/client'
+import { ApiError, api, urlBase } from '../api/client'
 import type { LibraryItem } from '../api/types'
 import { useAuth } from '../auth/useAuth'
 import { formatBytes } from '../format'
@@ -29,7 +42,9 @@ function AdminEditor({ item }: { item: LibraryItem }) {
   const navigate = useNavigate()
   const [title, setTitle] = useState(item.title)
   const [mode, setMode] = useState<RetentionMode>(modeOf(item.retentionDays))
-  const [custom, setCustom] = useState<number | string>(item.retentionDays && item.retentionDays > 0 ? item.retentionDays : 30)
+  const [custom, setCustom] = useState<number | string>(
+    item.retentionDays && item.retentionDays > 0 ? item.retentionDays : 30,
+  )
   const [confirming, setConfirming] = useState(false)
 
   useEffect(() => {
@@ -104,7 +119,12 @@ function AdminEditor({ item }: { item: LibraryItem }) {
           </Group>
         </div>
         <Group>
-          <Button size="xs" onClick={onSave} loading={save.isPending} disabled={mode === 'custom' && customDays === null}>
+          <Button
+            size="xs"
+            onClick={onSave}
+            loading={save.isPending}
+            disabled={mode === 'custom' && customDays === null}
+          >
             Save
           </Button>
           <Button size="xs" color="red" variant="light" onClick={() => setConfirming(true)}>
@@ -117,11 +137,14 @@ function AdminEditor({ item }: { item: LibraryItem }) {
         onClose={() => {
           setConfirming(false)
           remove.reset()
-        }}         title="Delete item"
+        }}
+        title="Delete item"
         size="sm"
       >
         <Stack gap="md">
-          <Text size="sm">Delete this item from the library? Seeding files in the download client aren't affected.</Text>
+          <Text size="sm">
+            Delete this item from the library? Seeding files in the download client aren't affected.
+          </Text>
           {remove.error && <Alert color="red">{remove.error.message}</Alert>}
           <Group justify="flex-end">
             <Button

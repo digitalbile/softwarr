@@ -36,7 +36,12 @@ export function ChangePasswordPage() {
               An admin set your current password. Pick one of your own to continue.
             </Text>
             {error && <Alert color="red">{error}</Alert>}
-            <PasswordInput label="Current password" autoComplete="current-password" required {...form.getInputProps('current')} />
+            <PasswordInput
+              label="Current password"
+              autoComplete="current-password"
+              required
+              {...form.getInputProps('current')}
+            />
             <PasswordInput label="New password" autoComplete="new-password" required {...form.getInputProps('next')} />
             <Button type="submit" loading={form.submitting}>
               Change password

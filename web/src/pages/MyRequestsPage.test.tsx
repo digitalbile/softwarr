@@ -1,19 +1,29 @@
 import { screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { http, HttpResponse } from 'msw'
+import { HttpResponse, http } from 'msw'
 import { expect, test } from 'vitest'
 import type { Request } from '../api/types'
 import { makeUser, server } from '../test/server'
-import { renderApp, useApiServer } from '../test/utils'
+import { renderApp, setupApiServer } from '../test/utils'
 
-useApiServer()
+setupApiServer()
 
 function req(over: Partial<Request>): Request {
   return {
-    id: 1, requesterId: 2, requester: 'sam', status: 'pending',
-    release: { title: 'Release one' } as Request['release'], originalRelease: null,
-    displayTitle: '', denyReason: '', error: '', progress: 0, libraryItemId: null,
-    createdAt: '2026-11-20T10:00:00Z', updatedAt: '2026-11-20T10:00:00Z', ...over,
+    id: 1,
+    requesterId: 2,
+    requester: 'sam',
+    status: 'pending',
+    release: { title: 'Release one' } as Request['release'],
+    originalRelease: null,
+    displayTitle: '',
+    denyReason: '',
+    error: '',
+    progress: 0,
+    libraryItemId: null,
+    createdAt: '2026-11-20T10:00:00Z',
+    updatedAt: '2026-11-20T10:00:00Z',
+    ...over,
   }
 }
 
@@ -21,7 +31,12 @@ test('my requests shows progress for downloading and cancel for pending', async 
   let cancelled = ''
   let list = [
     req({ id: 1, status: 'pending', displayTitle: 'Pending app' }),
-    req({ id: 2, status: 'downloading', progress: 0.4, release: { title: 'Downloading release' } as Request['release'] }),
+    req({
+      id: 2,
+      status: 'downloading',
+      progress: 0.4,
+      release: { title: 'Downloading release' } as Request['release'],
+    }),
     req({ id: 3, status: 'denied', denyReason: 'Not licensed', displayTitle: 'Denied app' }),
     req({ id: 4, status: 'failed', error: 'Disk full', displayTitle: 'Failed app' }),
   ]

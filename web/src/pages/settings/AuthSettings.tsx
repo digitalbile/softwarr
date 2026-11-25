@@ -1,5 +1,5 @@
-import { useState } from 'react'
 import { Alert, Button, CopyButton, Group, Loader, PasswordInput, Switch, Text, TextInput } from '@mantine/core'
+import { useState } from 'react'
 import type { Settings } from '../../api/types'
 import { SectionForm } from './SectionForm'
 import { useSaveSettings, useSettings } from './useSettings'
@@ -61,10 +61,28 @@ function AuthForm({ settings }: { settings: Settings }) {
       )}
       <TextInput label="Issuer URL" value={o.issuer} onChange={(e) => set('issuer', e.currentTarget.value)} />
       <TextInput label="Client ID" value={o.clientId} onChange={(e) => set('clientId', e.currentTarget.value)} />
-      <PasswordInput label="Client secret" value={o.clientSecret} onChange={(e) => set('clientSecret', e.currentTarget.value)} />
-      <TextInput label="Scopes" description="Separate with spaces." value={o.scopes} onChange={(e) => set('scopes', e.currentTarget.value)} />
-      <TextInput label="Button label" placeholder="Sign in with SSO" value={o.buttonLabel} onChange={(e) => set('buttonLabel', e.currentTarget.value)} />
-      <Switch label="Create accounts on first sign-in" checked={o.autoProvision} onChange={(e) => set('autoProvision', e.currentTarget.checked)} />
+      <PasswordInput
+        label="Client secret"
+        value={o.clientSecret}
+        onChange={(e) => set('clientSecret', e.currentTarget.value)}
+      />
+      <TextInput
+        label="Scopes"
+        description="Separate with spaces."
+        value={o.scopes}
+        onChange={(e) => set('scopes', e.currentTarget.value)}
+      />
+      <TextInput
+        label="Button label"
+        placeholder="Sign in with SSO"
+        value={o.buttonLabel}
+        onChange={(e) => set('buttonLabel', e.currentTarget.value)}
+      />
+      <Switch
+        label="Create accounts on first sign-in"
+        checked={o.autoProvision}
+        onChange={(e) => set('autoProvision', e.currentTarget.checked)}
+      />
       <Switch
         label="Link to existing accounts by verified email"
         checked={o.linkVerifiedEmail}
@@ -72,12 +90,23 @@ function AuthForm({ settings }: { settings: Settings }) {
       />
       {o.linkVerifiedEmail && (
         <Alert color="yellow">
-          Anyone who can verify an email address with your provider can sign in as the local account with that email. Only turn this on if you trust the provider.
+          Anyone who can verify an email address with your provider can sign in as the local account with that email.
+          Only turn this on if you trust the provider.
         </Alert>
       )}
       <Group grow align="flex-start">
-        <TextInput label="Admin claim" description="Claim that marks admins." value={o.adminClaim} onChange={(e) => set('adminClaim', e.currentTarget.value)} />
-        <TextInput label="Admin value" description="Value that grants admin." value={o.adminValue} onChange={(e) => set('adminValue', e.currentTarget.value)} />
+        <TextInput
+          label="Admin claim"
+          description="Claim that marks admins."
+          value={o.adminClaim}
+          onChange={(e) => set('adminClaim', e.currentTarget.value)}
+        />
+        <TextInput
+          label="Admin value"
+          description="Value that grants admin."
+          value={o.adminValue}
+          onChange={(e) => set('adminValue', e.currentTarget.value)}
+        />
       </Group>
     </SectionForm>
   )

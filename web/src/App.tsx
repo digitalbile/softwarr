@@ -5,6 +5,7 @@ import { RequireAdmin, RequireAuth } from './auth/guards'
 import { Shell } from './layout/Shell'
 import { ActivityPage } from './pages/admin/ActivityPage'
 import { RequestsQueuePage } from './pages/admin/RequestsQueuePage'
+import { SystemPage } from './pages/admin/SystemPage'
 import { ChangePasswordPage } from './pages/ChangePasswordPage'
 import { LibraryItemPage } from './pages/LibraryItemPage'
 import { LibraryPage } from './pages/LibraryPage'
@@ -12,9 +13,8 @@ import { LoginPage } from './pages/LoginPage'
 import { MyRequestsPage } from './pages/MyRequestsPage'
 import { ProfilePage } from './pages/ProfilePage'
 import { SearchPage } from './pages/SearchPage'
-import { SettingsLayout } from './pages/settings/SettingsLayout'
 import { SetupPage } from './pages/SetupPage'
-import { SystemPage } from './pages/admin/SystemPage'
+import { SettingsLayout } from './pages/settings/SettingsLayout'
 
 export function AppRoutes() {
   return (

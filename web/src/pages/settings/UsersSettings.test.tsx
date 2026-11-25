@@ -1,18 +1,24 @@
 import { screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { http, HttpResponse } from 'msw'
+import { HttpResponse, http } from 'msw'
 import { expect, test } from 'vitest'
 import { makeUser, server } from '../../test/server'
-import { renderApp, useApiServer } from '../../test/utils'
+import { renderApp, setupApiServer } from '../../test/utils'
 
-useApiServer()
+setupApiServer()
 
-const row = (t: string) => screen.getAllByText(t).map((e) => e.closest('tr')).find(Boolean)!
+const row = (t: string) =>
+  screen
+    .getAllByText(t)
+    .map((e) => e.closest('tr'))
+    .find(Boolean)!
 
 function setup(extra: Parameters<typeof server.use> = []) {
   server.use(
     ...extra,
-    http.get('*/api/v1/auth/me', () => HttpResponse.json(makeUser({ id: 1, username: 'root', isAdmin: true, isOwner: true }))),
+    http.get('*/api/v1/auth/me', () =>
+      HttpResponse.json(makeUser({ id: 1, username: 'root', isAdmin: true, isOwner: true })),
+    ),
     http.get('*/api/v1/users', () =>
       HttpResponse.json([
         makeUser({ id: 1, username: 'root', isOwner: true, isAdmin: true }),
@@ -45,7 +51,11 @@ test('sign-in type and pending approval', async () => {
 })
 
 test('delete conflict shows the server message', async () => {
-  setup([http.delete('*/api/v1/users/2', () => HttpResponse.json({ error: 'This user has requests. Disable the account instead.' }, { status: 409 }))])
+  setup([
+    http.delete('*/api/v1/users/2', () =>
+      HttpResponse.json({ error: 'This user has requests. Disable the account instead.' }, { status: 409 }),
+    ),
+  ])
   await userEvent.click(await screen.findByRole('button', { name: 'Delete sam' }))
   await userEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Delete' }))
   expect(await screen.findByText('This user has requests. Disable the account instead.')).toBeInTheDocument()
