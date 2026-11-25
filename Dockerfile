@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1
+# syntax=docker/dockerfile:1@sha256:572cebbc2b15e6f84c077742952674889cb63cd5e9b80abdffcbe587b6f19183
 
 # The web and Go stages run on the build machine's own platform. Go
 # cross-compiles for the target, so multi-arch builds skip emulation.
