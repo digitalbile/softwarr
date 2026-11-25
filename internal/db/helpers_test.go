@@ -6,9 +6,10 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/digitalbile/softwarr/internal/db"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/digitalbile/softwarr/internal/db"
 )
 
 func TestBoolInt(t *testing.T) {

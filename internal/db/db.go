@@ -31,7 +31,7 @@ func Open(path string) (*sql.DB, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open database: %w", err)
 	}
-	if err := d.Ping(); err != nil {
+	if err := d.PingContext(context.Background()); err != nil {
 		d.Close()
 		return nil, fmt.Errorf("open database: %w", err)
 	}

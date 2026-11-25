@@ -8,12 +8,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/digitalbile/softwarr/internal/db/dbq"
 	_ "github.com/digitalbile/softwarr/internal/downloadclient/qbittorrent"
 	"github.com/digitalbile/softwarr/internal/prowlarr"
 	"github.com/digitalbile/softwarr/internal/releasetoken"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 type requestBody struct {

@@ -6,10 +6,11 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/digitalbile/softwarr/internal/db/dbq"
-	"github.com/digitalbile/softwarr/internal/settings"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/digitalbile/softwarr/internal/db/dbq"
+	"github.com/digitalbile/softwarr/internal/settings"
 )
 
 const testIssuer = "https://idp.example.com"

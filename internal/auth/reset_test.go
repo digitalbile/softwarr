@@ -5,9 +5,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/digitalbile/softwarr/internal/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/digitalbile/softwarr/internal/testutil"
 )
 
 func TestResetOwnerPassword(t *testing.T) {

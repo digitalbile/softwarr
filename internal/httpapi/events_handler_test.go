@@ -9,10 +9,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/digitalbile/softwarr/internal/auth"
-	"github.com/digitalbile/softwarr/internal/events"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/digitalbile/softwarr/internal/auth"
+	"github.com/digitalbile/softwarr/internal/events"
 )
 
 func TestSSEEndpointRequiresLogin(t *testing.T) {

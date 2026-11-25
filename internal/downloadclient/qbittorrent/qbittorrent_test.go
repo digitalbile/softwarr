@@ -12,10 +12,11 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/digitalbile/softwarr/internal/downloadclient"
-	"github.com/digitalbile/softwarr/internal/torrentfile"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/digitalbile/softwarr/internal/downloadclient"
+	"github.com/digitalbile/softwarr/internal/torrentfile"
 )
 
 type fakeTorrent struct {

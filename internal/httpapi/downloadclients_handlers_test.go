@@ -7,9 +7,10 @@ import (
 	"strconv"
 	"testing"
 
-	_ "github.com/digitalbile/softwarr/internal/downloadclient/qbittorrent"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	_ "github.com/digitalbile/softwarr/internal/downloadclient/qbittorrent"
 )
 
 type clientBody struct {

@@ -8,12 +8,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/digitalbile/softwarr/internal/auth"
-	"github.com/digitalbile/softwarr/internal/db/dbq"
-	"github.com/digitalbile/softwarr/internal/settings"
 	"github.com/oauth2-proxy/mockoidc"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/digitalbile/softwarr/internal/auth"
+	"github.com/digitalbile/softwarr/internal/db/dbq"
+	"github.com/digitalbile/softwarr/internal/settings"
 )
 
 func newMockOIDC(t *testing.T) *mockoidc.MockOIDC {

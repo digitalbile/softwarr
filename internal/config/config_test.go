@@ -3,9 +3,10 @@ package config_test
 import (
 	"testing"
 
-	"github.com/digitalbile/softwarr/internal/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/digitalbile/softwarr/internal/config"
 )
 
 func env(m map[string]string) func(string) string {

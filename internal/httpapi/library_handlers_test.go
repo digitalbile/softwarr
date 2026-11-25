@@ -10,12 +10,13 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/digitalbile/softwarr/internal/downloadclient"
 	"github.com/digitalbile/softwarr/internal/importer"
 	"github.com/digitalbile/softwarr/internal/library"
 	"github.com/digitalbile/softwarr/internal/prowlarr"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 // addLibraryItem creates files in a library root and an item for requesterID
