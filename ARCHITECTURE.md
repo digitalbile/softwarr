@@ -94,7 +94,7 @@ web/src/
 
 Server data goes through TanStack Query. Components come from Mantine.
 
-`api/types.ts` is written by hand to match the Go JSON types. When you change a response in Go, change the type there in the same pull request.
+`api/types.ts` is written by hand to match the Go JSON types. When you change a response in Go, change the type there in the same pull request. `internal/httpapi/apitypes_test.go` fails if an interface's field names don't match its Go type, and a new interface needs an entry in that test's `apiTypes` map. It doesn't compare field types.
 
 ## Checks
 
