@@ -14,7 +14,7 @@
 
 services:
   softwarr:
-    image: ghcr.io/digitalbile/softwarr:latest # or build from this repository: build: ../
+    image: ghcr.io/digitalbile/softwarr:latest@sha256:a48a3a91a39c2d4caa2a882f30914458ca79af20cc767b8e46ac4d531b864df0 # or build from this repository: build: ../
     container_name: softwarr
     environment:
       PUID: "1000"
