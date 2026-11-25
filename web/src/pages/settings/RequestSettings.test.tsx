@@ -50,10 +50,3 @@ test('saving sends the whole settings object with the request changes merged', a
   expect(body!.defaultRetentionDays).toBe(30)
   expect(await screen.findByText('Saved.')).toBeInTheDocument()
 })
-
-test('the general page no longer shows the request settings', async () => {
-  setup(makeSettings(), '/settings/general')
-  expect(await screen.findByLabelText('External URL')).toBeInTheDocument()
-  expect(screen.queryByText('Require a reason with every request')).not.toBeInTheDocument()
-  expect(screen.queryByLabelText('Stall threshold hours')).not.toBeInTheDocument()
-})

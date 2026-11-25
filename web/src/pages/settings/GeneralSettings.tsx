@@ -1,4 +1,4 @@
-import { Alert, Button, CopyButton, Group, Loader, NumberInput, TextInput } from '@mantine/core'
+import { Alert, Button, CopyButton, Group, Loader, TextInput } from '@mantine/core'
 import { useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { api } from '../../api/client'
@@ -11,21 +11,11 @@ function GeneralForm({ settings }: { settings: Settings }) {
   const save = useSaveSettings()
   const queryClient = useQueryClient()
   const [externalUrl, setExternalUrl] = useState(settings.externalUrl)
-  const [retention, setRetention] = useState<number | string>(settings.defaultRetentionDays)
   const [confirming, setConfirming] = useState(false)
 
   return (
     <>
-      <SectionForm
-        title="General"
-        onSave={() =>
-          save.mutateAsync((s) => ({
-            ...s,
-            externalUrl: externalUrl.trim(),
-            defaultRetentionDays: Number(retention) || 0,
-          }))
-        }
-      >
+      <SectionForm title="General" onSave={() => save.mutateAsync((s) => ({ ...s, externalUrl: externalUrl.trim() }))}>
         <TextInput
           label="External URL"
           description="The address people use to reach softwarr. Used in links and the single sign-on redirect."
@@ -52,14 +42,6 @@ function GeneralForm({ settings }: { settings: Settings }) {
               </Button>
             </Group>
           }
-        />
-        <NumberInput
-          label="Default retention days"
-          description="How long imported items stay in the library. 0 keeps them forever."
-          min={0}
-          allowDecimal={false}
-          value={retention}
-          onChange={setRetention}
         />
       </SectionForm>
       <ConfirmDialog
