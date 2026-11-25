@@ -23,6 +23,24 @@ jobs:
           go-version-file: go.mod
       - run: go vet ./...
       - run: go test ./...
+      - name: Check go.mod and go.sum are tidy
+        run: go mod tidy -diff
+      - name: Check sqlc output matches the queries
+        run: go tool sqlc diff
+
+  lint:
+    runs-on: ubuntu-latest
+    env:
+      # renovate: datasource=github-releases depName=golangci/golangci-lint
+      GOLANGCI_LINT_VERSION: v2.15.0
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version-file: go.mod
+      - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          version: ${{ env.GOLANGCI_LINT_VERSION }}
 
   web:
     runs-on: ubuntu-latest
@@ -37,6 +55,7 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
       - run: npm ci
+      - run: npm run lint
       - run: npm test -- --run
       - run: npm run build
 
@@ -48,7 +67,7 @@ jobs:
 
   check:
     if: always()
-    needs: [go, web, smoke]
+    needs: [go, lint, web, smoke]
     runs-on: ubuntu-latest
     steps:
       - uses: re-actors/alls-green@b5b5b37504aa4183270bd3d855c52a67f212be35 # v1.3.0
