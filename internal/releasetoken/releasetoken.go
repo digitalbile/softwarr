@@ -61,7 +61,7 @@ func Seal(key []byte, rel prowlarr.Release, uid int64, now time.Time) (string, e
 	if err != nil {
 		return "", err
 	}
-	nonce := make([]byte, gcm.NonceSize(), gcm.NonceSize()+len(plain)+gcm.Overhead())
+	nonce := make([]byte, gcm.NonceSize())
 	if _, err := rand.Read(nonce); err != nil {
 		return "", err
 	}
