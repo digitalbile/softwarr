@@ -98,7 +98,11 @@ func TestIndexersAndPing(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/v1/indexer":
-			w.Write([]byte(`[{"id":1,"name":"A","protocol":"torrent","enable":true},{"id":2,"name":"B","protocol":"usenet","enable":false}]`))
+			w.Write([]byte(`[
+				{"id":1,"name":"A","protocol":"torrent","enable":true,
+				 "capabilities":{"categories":[{"id":4000,"subCategories":[{"id":4010}]}]}},
+				{"id":2,"name":"B","protocol":"usenet","enable":false}
+			]`))
 		case "/api/v1/system/status":
 			w.Write([]byte(`{}`))
 		default:
@@ -109,8 +113,25 @@ func TestIndexersAndPing(t *testing.T) {
 	c := New(srv.URL, "k", srv.Client())
 	got, err := c.Indexers(context.Background())
 	require.NoError(t, err)
-	assert.Equal(t, []Indexer{{1, "A", "torrent", true}, {2, "B", "usenet", false}}, got)
+	assert.Equal(t, []Indexer{
+		{ID: 1, Name: "A", Protocol: "torrent", Enabled: true, Categories: []int{4000, 4010}},
+		{ID: 2, Name: "B", Protocol: "usenet", Enabled: false, Categories: []int{}},
+	}, got)
 	require.NoError(t, c.Ping(context.Background()))
+}
+
+func TestIndexerSupports(t *testing.T) {
+	pc := Indexer{Categories: []int{4000, 4050}}
+	console := Indexer{Categories: []int{1000, 1080}}
+	custom := Indexer{Categories: []int{100004}}
+
+	assert.True(t, pc.Supports([]int{4000, 4010}))
+	assert.True(t, pc.Supports([]int{4010}), "a subcategory matches others in its group")
+	assert.False(t, console.Supports([]int{4000, 4010}))
+	assert.True(t, console.Supports([]int{1000, 4000}))
+	assert.False(t, custom.Supports([]int{4000}))
+	assert.True(t, console.Supports(nil), "no categories means no filter")
+	assert.True(t, Indexer{}.Supports([]int{4000}), "an indexer without capabilities isn't hidden")
 }
 
 func TestReleaseInfoHashFromMagnet(t *testing.T) {

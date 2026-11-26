@@ -43,7 +43,12 @@ func newFakeProwlarr(t *testing.T) *fakeProwlarr {
 			f.mu.Unlock()
 			w.Write(body)
 		case "/api/v1/indexer":
-			w.Write([]byte(`[{"id":1,"name":"A","protocol":"torrent","enable":true}]`))
+			w.Write([]byte(`[
+				{"id":1,"name":"A","protocol":"torrent","enable":true,
+				 "capabilities":{"categories":[{"id":4000,"subCategories":[{"id":4050}]}]}},
+				{"id":2,"name":"Music","protocol":"torrent","enable":true,
+				 "capabilities":{"categories":[{"id":3000}]}}
+			]`))
 		case "/api/v1/system/status":
 			if r.Header.Get("X-Api-Key") != "good" {
 				http.Error(w, "nope", http.StatusUnauthorized)
@@ -278,6 +283,7 @@ func TestIndexersAdminOnly(t *testing.T) {
 	resp := admin.do("GET", "/api/v1/indexers", nil)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	got := decode[[]prowlarr.Indexer](t, resp)
+	// Music offers nothing in the PC categories softwarr searches.
 	require.Len(t, got, 1)
 	assert.Equal(t, "A", got[0].Name)
 
