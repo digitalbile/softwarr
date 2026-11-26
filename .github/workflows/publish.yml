@@ -2,7 +2,8 @@
 # ghcr.io/<owner>/softwarr. Called by cd.yml and release.yml.
 #
 # A release (release: true) publishes the version (1.2.3), the minor line
-# (1.2), and latest. Otherwise the branch name is published (main).
+# (1.2), and latest. A prerelease (1.2.3-rc.1) publishes only its version.
+# Otherwise the branch name is published (main).
 name: Publish
 
 on:
@@ -52,8 +53,9 @@ jobs:
             type=ref,event=branch,enable=${{ !inputs.release }}
             type=semver,pattern={{version}},value=${{ inputs.version }},enable=${{ inputs.release }}
             type=semver,pattern={{major}}.{{minor}},value=${{ inputs.version }},enable=${{ inputs.release }}
+          # auto leaves latest off prereleases such as v1.0.0-rc.1.
           flavor: |
-            latest=${{ inputs.release }}
+            latest=${{ inputs.release && 'auto' || 'false' }}
       - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .

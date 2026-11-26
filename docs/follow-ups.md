@@ -21,6 +21,7 @@ These came from the code review of the phase-1 branch.
 - The removal guard checks that an item's folder isn't a symlink, but it doesn't check the folders above it, because a library folder that is a symlink is a normal setup. Only softwarr writes the stored folder path, so this matters only if the database is edited by hand.
 - A library folder at `/` can't delete items, because the guard refuses folders directly under `/`.
 - While "Disable local auth" is on, an admin can still create local users, and those users can't sign in. The users page could warn about it.
+- The Release workflow installs git-cliff through `orhun/git-cliff-action`, which downloads the release binary without checking a checksum.
 
 ## Planned features
 

@@ -1,4 +1,5 @@
-# Runs on every pull request. cd.yml also calls it before publishing.
+# Runs on every pull request. cd.yml and release.yml also call it before
+# publishing.
 #
 # Branch protection should require only the check job. It passes when every
 # job it needs passed, so jobs can be added or made optional here without
