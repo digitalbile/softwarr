@@ -153,6 +153,16 @@ func (s *server) authenticate(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
+		allowed, err := s.OIDC.SessionAllowed(ctx, user)
+		if err != nil {
+			serverError(w, err)
+			return
+		}
+		if !allowed {
+			_ = s.Sessions.Delete(ctx, c.Value)
+			next.ServeHTTP(w, r)
+			return
+		}
 		if user.MustChangePassword && !mustChangeExempt(r) {
 			writeError(w, http.StatusForbidden, "password_change_required")
 			return

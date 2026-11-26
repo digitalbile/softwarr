@@ -117,7 +117,7 @@ func TestOIDCCallbackEndToEnd(t *testing.T) {
 	})
 
 	cfg := decode[map[string]any](t, ts.do("GET", "/api/v1/auth/oidc/config", nil))
-	assert.Equal(t, map[string]any{"enabled": true, "buttonLabel": "Sign in with Example"}, cfg)
+	assert.Equal(t, map[string]any{"enabled": true, "buttonLabel": "Sign in with Example", "localAuthDisabled": false}, cfg)
 
 	m.QueueUser(&mockoidc.MockUser{Subject: "sub-jane", Email: "jane@example.com", EmailVerified: true, Groups: []string{"softwarr-admins"}})
 	c := ts.newClient()
@@ -194,7 +194,7 @@ func TestOIDCDisabled(t *testing.T) {
 	ts.ensureOwner()
 
 	cfg := decode[map[string]any](t, ts.do("GET", "/api/v1/auth/oidc/config", nil))
-	assert.Equal(t, map[string]any{"enabled": false, "buttonLabel": "Sign in with SSO"}, cfg)
+	assert.Equal(t, map[string]any{"enabled": false, "buttonLabel": "Sign in with SSO", "localAuthDisabled": false}, cfg)
 
 	resp := ts.request("GET", "/api/v1/auth/oidc/login", nil, nil)
 	require.Equal(t, http.StatusFound, resp.StatusCode)
@@ -561,4 +561,77 @@ func mustQuery(t *testing.T, raw string) url.Values {
 	u, err := url.Parse(raw)
 	require.NoError(t, err)
 	return u.Query()
+}
+
+func passwordLogin(c *client, username, password string) *http.Response {
+	return c.do("POST", "/api/v1/auth/login", map[string]string{"username": username, "password": password})
+}
+
+func TestDisableLocalAuthPasswordSignIn(t *testing.T) {
+	ts := newTestServer(t)
+	ctx := context.Background()
+	ts.ensureOwner()
+	m := newMockOIDC(t)
+	ts.enableOIDC(m, "", func(o *settings.OIDC) { o.DisableLocalAuth = true })
+	_, err := ts.Deps.Users.CreateLocal(ctx, "admin2", "", testPassword, true)
+	require.NoError(t, err)
+	_, err = ts.Deps.Users.CreateLocal(ctx, "user", "", testPassword, false)
+	require.NoError(t, err)
+
+	cfg := decode[map[string]any](t, ts.do("GET", "/api/v1/auth/oidc/config", nil))
+	assert.Equal(t, true, cfg["localAuthDisabled"])
+
+	ts.newClient().login("owner", testPassword)
+
+	for _, name := range []string{"admin2", "user"} {
+		resp := passwordLogin(ts.newClient(), name, testPassword)
+		assert.Equal(t, http.StatusForbidden, resp.StatusCode, name)
+		assert.False(t, hasSessionCookie(resp), name)
+		assert.Equal(t, auth.ErrPasswordSignInOff.Error(), errorBody(t, resp), name)
+	}
+	// A wrong password doesn't reveal that the account exists.
+	assert.Equal(t, http.StatusUnauthorized, passwordLogin(ts.newClient(), "user", "not the password").StatusCode)
+
+	// Without a usable OIDC setup, the switch does nothing.
+	st, err := ts.Deps.Settings.Get(ctx)
+	require.NoError(t, err)
+	st.OIDC.Issuer = ""
+	require.NoError(t, ts.Deps.Settings.Save(ctx, st))
+	cfg = decode[map[string]any](t, ts.do("GET", "/api/v1/auth/oidc/config", nil))
+	assert.Equal(t, false, cfg["localAuthDisabled"])
+	ts.newClient().login("admin2", testPassword)
+}
+
+func TestDisableLocalAuthEndsLocalSessions(t *testing.T) {
+	ts := newTestServer(t)
+	ctx := context.Background()
+	m := newMockOIDC(t)
+	ts.enableOIDC(m, "", nil)
+
+	co := ts.newClient()
+	co.loginAsOwner()
+	cu := ts.newClient()
+	cu.loginAsUser()
+	linked, err := ts.Deps.Users.CreateLocal(ctx, "linked", "", testPassword, false)
+	require.NoError(t, err)
+	cl := ts.newClient()
+	cl.login("linked", testPassword)
+	require.NoError(t, ts.Q.CreateIdentity(ctx, dbq.CreateIdentityParams{
+		UserID: linked.ID, Issuer: m.Issuer(), Subject: "sub-linked", CreatedAt: 1,
+	}))
+
+	setDisabled := func(on bool) {
+		st, err := ts.Deps.Settings.Get(ctx)
+		require.NoError(t, err)
+		st.OIDC.DisableLocalAuth = on
+		require.NoError(t, ts.Deps.Settings.Save(ctx, st))
+	}
+	setDisabled(true)
+	assert.Equal(t, http.StatusUnauthorized, cu.do("GET", "/api/v1/auth/me", nil).StatusCode)
+	assert.Equal(t, http.StatusOK, cl.do("GET", "/api/v1/auth/me", nil).StatusCode)
+	assert.Equal(t, http.StatusOK, co.do("GET", "/api/v1/auth/me", nil).StatusCode)
+
+	// The session was deleted, not just refused.
+	setDisabled(false)
+	assert.Equal(t, http.StatusUnauthorized, cu.do("GET", "/api/v1/auth/me", nil).StatusCode)
 }

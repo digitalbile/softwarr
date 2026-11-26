@@ -103,6 +103,15 @@ func (s *server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		serverError(w, err)
 		return
 	}
+	err = s.OIDC.CheckPasswordLogin(r.Context(), user)
+	switch {
+	case errors.Is(err, auth.ErrPasswordSignInOff):
+		writeError(w, http.StatusForbidden, err.Error())
+		return
+	case err != nil:
+		serverError(w, err)
+		return
+	}
 	if err := s.startSession(w, r, user.ID); err != nil {
 		serverError(w, err)
 		return
