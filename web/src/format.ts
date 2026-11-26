@@ -20,8 +20,10 @@ export function formatAge(iso: string, now: number = Date.now()): string {
   return `${mins}m`
 }
 
-// Newznab standard PC categories. Anything else shows as its id.
+// Newznab standard PC categories, plus the other groups an indexer is likely
+// to tag software with. Anything else shows as its id.
 const categoryNames: Record<number, string> = {
+  1000: 'Console',
   4000: 'PC',
   4010: 'PC/0day',
   4020: 'PC/ISO',
@@ -30,8 +32,26 @@ const categoryNames: Record<number, string> = {
   4050: 'PC/Games',
   4060: 'PC/Mobile-iOS',
   4070: 'PC/Mobile-Android',
+  8000: 'Other',
 }
 
 export function formatCategories(ids: number[]): string {
   return ids.map((id) => categoryNames[id] ?? String(id)).join(', ')
+}
+
+// Newznab reserves ids from 100000 for each indexer's own categories.
+const firstCustomCategory = 100000
+
+const group = (id: number) => Math.floor(id / 1000) * 1000
+
+// shortCategories names a release's categories in a few words. It leaves out
+// indexer-specific ids when there are standard ones, and a group such as PC
+// when a subcategory of it is listed. When more than two remain, it names
+// only their groups.
+export function shortCategories(ids: number[]): string {
+  const standard = ids.filter((id) => id < firstCustomCategory)
+  if (standard.length === 0) return formatCategories(ids)
+  const specific = standard.filter((id) => id !== group(id) || !standard.some((o) => o !== id && group(o) === id))
+  if (specific.length <= 2) return formatCategories(specific)
+  return formatCategories([...new Set(specific.map(group))])
 }

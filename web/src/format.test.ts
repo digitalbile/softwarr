@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { formatAge, formatBytes, formatCategories } from './format'
+import { formatAge, formatBytes, formatCategories, shortCategories } from './format'
 
 test('formatBytes and formatAge', () => {
   expect(formatBytes(0)).toBe('0 B')
@@ -20,4 +20,16 @@ test('formatCategories names the standard PC categories', () => {
   expect(formatCategories([4030, 4050])).toBe('PC/Mac, PC/Games')
   expect(formatCategories([4000, 100123])).toBe('PC, 100123')
   expect(formatCategories([])).toBe('')
+})
+
+test('shortCategories keeps the most specific standard categories', () => {
+  expect(shortCategories([4030, 100001])).toBe('PC/Mac')
+  expect(shortCategories([4000, 4020])).toBe('PC/ISO')
+  expect(shortCategories([4000, 4030, 1000])).toBe('PC/Mac, Console')
+  expect(shortCategories([4000])).toBe('PC')
+  // An indexer that tags a release with every subcategory shows the group.
+  expect(shortCategories([4000, 4010, 4020, 4030, 4040, 100002])).toBe('PC')
+  expect(shortCategories([4010, 4020, 4030, 1010])).toBe('PC, Console')
+  expect(shortCategories([100123])).toBe('100123')
+  expect(shortCategories([])).toBe('')
 })

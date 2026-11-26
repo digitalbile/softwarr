@@ -108,7 +108,7 @@ function Form({ request, mode, onClose, onApprove }: Props & { request: ApproveT
             onChange={(e) => setQuery(e.currentTarget.value)}
             style={{ flex: 1 }}
           />
-          <Button type="submit" variant="default" loading={search.isFetching}>
+          <Button type="submit" variant="default" size="sm" loading={search.isFetching}>
             Search
           </Button>
         </Group>
