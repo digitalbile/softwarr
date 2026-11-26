@@ -19,6 +19,17 @@ Renovate opens pull requests for dependency updates and keeps the pins current. 
 
 ## Images and releases
 
-`.github/workflows/cd.yml` runs CI again on each push to `main`, then publishes the `main` image.
+`.github/workflows/cd.yml` runs CI again on each push to `main`, then publishes the `main` image. The image build itself is in `publish.yml`, which `cd.yml` and `release.yml` both call.
 
-To publish a release, push a version tag such as `v0.1.0` on a commit in `main`. That publishes `0.1.0`, `0.1`, and `latest`, for amd64 and arm64. Wait for the CD run on `main` to pass before tagging.
+To cut a release, open the Actions tab, pick Release, and run it on `main`. It works out the next version from the conventional commits since the last tag, runs CI, publishes `X.Y.Z`, `X.Y` and `latest` for amd64 and arm64, and then creates the tag and a GitHub release with notes. The tag comes last, so a failed build leaves no release. Tick "Only show the version and notes" for a dry run, which writes both to the run summary and stops there.
+
+[git-cliff](https://git-cliff.org) works out the version, using the rules in `cliff.toml`:
+
+- `feat` bumps the minor version.
+- `fix` and `perf` bump the patch, including Renovate's `fix(deps)` updates.
+- A breaking change (`feat!:` or a `BREAKING CHANGE:` footer) bumps the major version, or the minor version while the version is below 1.0.
+- Other types don't need a release. If nothing since the last tag bumps the version, the run ends green without tagging.
+
+The release notes list the breaking changes, features, fixes and performance commits, grouped by type.
+
+A tag that the Release workflow creates doesn't start `cd.yml`, because GitHub doesn't start workflows from events made with `GITHUB_TOKEN`. That's why `release.yml` publishes the images itself. A tag pushed by hand still goes through `cd.yml` and publishes the same image tags. That's how to go to 1.0: push `v1.0.0` on a commit in `main` once its CD run has passed.

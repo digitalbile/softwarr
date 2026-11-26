@@ -67,7 +67,7 @@ The README stays short: what softwarr is, the current limits, the quick start, a
 Read [docs/ci-and-releases.md](docs/ci-and-releases.md) before changing anything under `.github/`, the `Dockerfile`, or `docker/`.
 
 - Every `uses:` in a workflow is pinned to a full commit SHA with its version in a comment, and base images are pinned by digest. Renovate updates the pins. Keep new ones in the same form.
-- A release is a version tag (`v0.1.0`) pushed to `main`. The CD workflow builds and publishes the images. Agents never push tags, publish releases, or push to `main`.
+- A person cuts a release by running the Release workflow, which works out the version from the conventional commits (`cliff.toml`), publishes the images, and then tags. Agents never run the Release workflow, push tags, publish releases, or push to `main`.
 - `docs/follow-ups.md` lists known work. Check it before starting, and add to it anything you find but leave out of scope.
 
 ## Git

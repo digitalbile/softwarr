@@ -66,7 +66,7 @@ type(scope): summary
 Body explaining why, when the summary doesn't make it obvious.
 ```
 
-- The type is `feat`, `fix`, `refactor`, `test`, `docs`, `ci` or `chore`.
+- The type is `feat`, `fix`, `perf`, `refactor`, `test`, `docs`, `ci` or `chore`. It sets the next version: `feat` bumps the minor version, `fix` and `perf` bump the patch, and the others don't need a release. Mark a breaking change with `!` after the type (`feat!:`) or a `BREAKING CHANGE:` footer.
 - The scope is optional. Use the package or area the change is in, such as `requests`, `library`, `auth`, `settings` or `web`. Renovate uses `deps`.
 - Write the summary in the imperative mood, in lowercase, with no period at the end, and keep it under 72 characters.
 - Use the body to explain why. The diff already shows what changed.
@@ -105,4 +105,4 @@ Search the issues first. A useful report has:
 
 ## Releases
 
-The maintainer cuts releases by pushing a version tag such as `v0.2.0` to `main`, and the CD workflow publishes the images. [docs/ci-and-releases.md](docs/ci-and-releases.md) has the details. Don't change version numbers or push tags in a pull request.
+The maintainer cuts releases with the Release workflow, which works out the version from the conventional commits since the last release and publishes the images. [docs/ci-and-releases.md](docs/ci-and-releases.md) has the details. Don't change version numbers or push tags in a pull request.
