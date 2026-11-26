@@ -1,0 +1,104 @@
+# Cuts a release from main. Run it from the Actions tab. git-cliff works out
+# the next version from the conventional commits since the last tag
+# (cliff.toml). Then CI runs, the images are published, and only after that
+# are the tag and the GitHub release created, so a failed build leaves no
+# release behind. See docs/ci-and-releases.md.
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Only show the version and notes
+        type: boolean
+        default: false
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.next.outputs.version }}
+      notes: ${{ steps.next.outputs.notes }}
+      release: ${{ steps.next.outputs.release }}
+    steps:
+      - name: Check the branch
+        if: github.ref != 'refs/heads/main'
+        run: |
+          echo "::error::Run the release from main."
+          exit 1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - id: cliff
+        uses: orhun/git-cliff-action@a9a95522b26fe6403f7bb24031f21fb573d0f5ff # v4.9.1
+        with:
+          version: v2.14.2
+          config: cliff.toml
+          args: --unreleased --bump --strip all
+      - id: next
+        env:
+          VERSION: ${{ steps.cliff.outputs.version }}
+          NOTES: ${{ steps.cliff.outputs.content }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          latest=$(git describe --tags --abbrev=0 --match 'v[0-9]*' 2>/dev/null || true)
+          # git-cliff reports the current tag when no commit bumps the version.
+          if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ || "$VERSION" == "$latest" ]]; then
+            echo "Nothing to release since ${latest:-the first commit}." >> "$GITHUB_STEP_SUMMARY"
+            echo "release=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          {
+            echo "## $VERSION"
+            if [[ "$DRY_RUN" == "true" ]]; then echo "Dry run: nothing was tagged or published."; fi
+            echo
+            echo "$NOTES"
+          } >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo "version=$VERSION"
+            echo "notes<<RELEASE_NOTES_EOF"
+            echo "$NOTES"
+            echo "RELEASE_NOTES_EOF"
+            if [[ "$DRY_RUN" == "true" ]]; then echo "release=false"; else echo "release=true"; fi
+          } >> "$GITHUB_OUTPUT"
+
+  ci:
+    needs: version
+    if: needs.version.outputs.release == 'true'
+    uses: ./.github/workflows/ci.yml
+
+  publish:
+    needs: [version, ci]
+    if: needs.version.outputs.release == 'true'
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/publish.yml
+    with:
+      version: ${{ needs.version.outputs.version }}
+      release: true
+
+  release:
+    needs: [version, publish]
+    if: needs.version.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      # The tag goes on the commit this run started from, which is the one
+      # CI tested and the images were built from.
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.version.outputs.version }}
+          NOTES: ${{ needs.version.outputs.notes }}
+        run: |
+          printf '%s\n' "$NOTES" > notes.md
+          gh release create "$VERSION" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --title "$VERSION" --notes-file notes.md
