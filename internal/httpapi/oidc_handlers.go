@@ -61,24 +61,13 @@ func (s *server) oidcFail(w http.ResponseWriter, r *http.Request, err error) {
 }
 
 func (s *server) handleOIDCConfig(w http.ResponseWriter, r *http.Request) {
-	st, err := s.Settings.Get(r.Context())
+	opts, err := s.OIDC.LoginOptions(r.Context())
 	if err != nil {
 		serverError(w, err)
 		return
 	}
-	needsSetup, err := s.Users.NeedsSetup(r.Context())
-	if err != nil {
-		serverError(w, err)
-		return
-	}
-	localOff, err := s.OIDC.LocalAuthDisabled(r.Context())
-	if err != nil {
-		serverError(w, err)
-		return
-	}
-	enabled := st.OIDC.Enabled && st.OIDC.Issuer != "" && st.ExternalURL != "" && !needsSetup
 	writeJSON(w, http.StatusOK, map[string]any{
-		"enabled": enabled, "buttonLabel": st.OIDC.ButtonLabel, "localAuthDisabled": localOff,
+		"enabled": opts.SSO, "buttonLabel": opts.ButtonLabel, "localAuthDisabled": opts.LocalAuthDisabled,
 	})
 }
 

@@ -215,10 +215,11 @@ func TestOIDCDisabled(t *testing.T) {
 func TestOIDCRefusedWhileSetupNeeded(t *testing.T) {
 	ts := newTestServer(t)
 	m := newMockOIDC(t)
-	ts.enableOIDC(m, "", nil)
+	ts.enableOIDC(m, "", func(o *settings.OIDC) { o.DisableLocalAuth = true })
 
 	cfg := decode[map[string]any](t, ts.do("GET", "/api/v1/auth/oidc/config", nil))
 	assert.Equal(t, false, cfg["enabled"])
+	assert.Equal(t, false, cfg["localAuthDisabled"])
 
 	resp := ts.request("GET", "/api/v1/auth/oidc/login", nil, nil)
 	require.Equal(t, http.StatusFound, resp.StatusCode)
