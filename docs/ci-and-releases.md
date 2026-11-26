@@ -15,13 +15,13 @@ Every `uses:` is pinned to a full commit SHA with its version in a comment, and 
 
 ## Dependency updates
 
-Renovate opens pull requests for dependency updates and keeps the pins current. It merges digest, patch, and minor updates once CI passes. Major updates wait for a review. Renovate also updates the golangci-lint version in `ci.yml`, through the `# renovate:` comment above it.
+Renovate opens pull requests for dependency updates and keeps the pins current. It merges digest, patch, and minor updates once CI passes. Major updates wait for a review. Renovate also updates the golangci-lint version in `ci.yml` and the git-cliff version in `release.yml`, through the `# renovate:` comment above each.
 
 ## Images and releases
 
 `.github/workflows/cd.yml` runs CI again on each push to `main`, then publishes the `main` image. The image build itself is in `publish.yml`, which `cd.yml` and `release.yml` both call.
 
-To cut a release, open the Actions tab, pick Release, and run it on `main`. It works out the next version from the conventional commits since the last tag, runs CI, publishes `X.Y.Z`, `X.Y` and `latest` for amd64 and arm64, and then creates the tag and a GitHub release with notes. The tag comes last, so a failed build leaves no release. Tick "Only show the version and notes" for a dry run, which writes both to the run summary and stops there.
+To cut a release, open the Actions tab, pick Release, and run it on `main`. It works out the next version from the conventional commits since the last tag, runs CI, publishes `X.Y.Z`, `X.Y` and `latest` for amd64 and arm64, and then creates the tag and a GitHub release with notes. The tag comes last, so a failed build leaves no release. If the last job fails after the images are published, `latest` points at a build with no tag until you use "Re-run failed jobs" on that run. Tick "Only show the version and notes" for a dry run, which writes both to the run summary and stops there.
 
 [git-cliff](https://git-cliff.org) works out the version, using the rules in `cliff.toml`:
 
@@ -32,4 +32,4 @@ To cut a release, open the Actions tab, pick Release, and run it on `main`. It w
 
 The release notes list the breaking changes, features, fixes and performance commits, grouped by type.
 
-A tag that the Release workflow creates doesn't start `cd.yml`, because GitHub doesn't start workflows from events made with `GITHUB_TOKEN`. That's why `release.yml` publishes the images itself. A tag pushed by hand still goes through `cd.yml` and publishes the same image tags. That's how to go to 1.0: push `v1.0.0` on a commit in `main` once its CD run has passed.
+A tag that the Release workflow creates doesn't start `cd.yml`, because GitHub doesn't start workflows from events made with `GITHUB_TOKEN`. That's why `release.yml` publishes the images itself. A tag pushed by hand still goes through `cd.yml` and publishes the same image tags, except that a prerelease such as `v1.0.0-rc.1` publishes only its own tag and leaves `latest` alone. That's how to go to 1.0: push `v1.0.0` on a commit in `main` once its CD run has passed. A hand-pushed tag gets no GitHub release, so run `gh release create v1.0.0 --generate-notes` afterwards.

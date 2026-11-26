@@ -23,6 +23,9 @@ permissions:
 jobs:
   version:
     runs-on: ubuntu-latest
+    env:
+      # renovate: datasource=github-releases depName=orhun/git-cliff
+      GIT_CLIFF_VERSION: v2.14.2
     outputs:
       version: ${{ steps.next.outputs.version }}
       notes: ${{ steps.next.outputs.notes }}
@@ -39,7 +42,7 @@ jobs:
       - id: cliff
         uses: orhun/git-cliff-action@a9a95522b26fe6403f7bb24031f21fb573d0f5ff # v4.9.1
         with:
-          version: v2.14.2
+          version: ${{ env.GIT_CLIFF_VERSION }}
           config: cliff.toml
           args: --unreleased --bump --strip all
       - id: next
@@ -48,9 +51,16 @@ jobs:
           NOTES: ${{ steps.cliff.outputs.content }}
           DRY_RUN: ${{ inputs.dry_run }}
         run: |
-          latest=$(git describe --tags --abbrev=0 --match 'v[0-9]*' 2>/dev/null || true)
+          if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::git-cliff gave \"$VERSION\", which isn't a version."
+            exit 1
+          fi
           # git-cliff reports the current tag when no commit bumps the version.
-          if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ || "$VERSION" == "$latest" ]]; then
+          # A hand-pushed tag such as v1.0.0-rc.1 can be newer than that, so
+          # check that the tag exists. The newest tag is only for the summary,
+          # and uses the same pattern as tag_pattern in cliff.toml.
+          if git rev-parse -q --verify "refs/tags/$VERSION" >/dev/null; then
+            latest=$(git tag --merged HEAD --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1)
             echo "Nothing to release since ${latest:-the first commit}." >> "$GITHUB_STEP_SUMMARY"
             echo "release=false" >> "$GITHUB_OUTPUT"
             exit 0
