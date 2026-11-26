@@ -37,6 +37,7 @@ type fakeQbit struct {
 	torrents     map[string]*fakeTorrent
 	badLogin     bool
 	badSID       bool // logins succeed but the issued SID is never valid
+	loginNoBody  bool // logins answer 204 with no body, as qBittorrent 5.2 does
 	paths        []string
 	nextSID      int
 	lastAdd      map[string]string
@@ -81,6 +82,10 @@ func (f *fakeQbit) handle(w http.ResponseWriter, r *http.Request) {
 			f.sids[sid] = true
 		}
 		http.SetCookie(w, &http.Cookie{Name: "SID", Value: sid, Path: "/"})
+		if f.loginNoBody {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
 		_, _ = w.Write([]byte("Ok."))
 		return
 	case "/api/v2/app/version", "/api/v2/torrents/add", "/api/v2/torrents/info", "/api/v2/torrents/files":
@@ -400,6 +405,13 @@ func TestQbitBadCredentials(t *testing.T) {
 	err := c.Test(context.Background())
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "username or password")
+}
+
+func TestQbitLoginNoContent(t *testing.T) {
+	f := newFakeQbit(t)
+	f.loginNoBody = true
+	c := f.client(t, nil)
+	require.NoError(t, c.Test(context.Background()))
 }
 
 func TestQbitOnlyUsesAllowedEndpoints(t *testing.T) {
