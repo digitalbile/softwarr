@@ -83,7 +83,8 @@ export function SearchPage() {
               clearable
             />
           )}
-          <Button type="submit" loading={search.isFetching}>
+          {/* Match the inputs' height so the button lines up with them. */}
+          <Button type="submit" size="sm" loading={search.isFetching}>
             Search
           </Button>
         </Group>

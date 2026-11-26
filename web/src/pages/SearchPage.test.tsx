@@ -67,6 +67,39 @@ test('search renders results with correct badges', async () => {
   expect(within(row('Delta app')).getByText('PC')).toBeInTheDocument()
 })
 
+test('columns sort, with seeders and leechers as icon headers', async () => {
+  setup({}, () =>
+    HttpResponse.json([
+      result({ key: 'a', guid: 'a', title: 'Alpha app', indexer: 'Zed', seeders: 5, leechers: 9 }),
+      result({ key: 'b', guid: 'b', title: 'Beta app', indexer: 'Abc', seeders: 50, leechers: 1 }),
+      result({ key: 'c', guid: 'c', title: 'Gamma app', indexer: 'Mid', seeders: null, leechers: null, grabs: 20 }),
+    ]),
+  )
+  const u = await runSearch()
+  await screen.findByText('Alpha app')
+  const titles = () =>
+    screen
+      .getAllByRole('row')
+      .slice(1)
+      .map((r) => within(r).getAllByRole('cell')[0].textContent)
+
+  expect(screen.queryByRole('columnheader', { name: 'Protocol' })).not.toBeInTheDocument()
+  expect(screen.queryByText('torrent')).not.toBeInTheDocument()
+
+  await u.click(screen.getByRole('button', { name: 'Indexer' }))
+  expect(titles()).toEqual(['Beta app', 'Gamma app', 'Alpha app'])
+
+  // Usenet grabs sort with seeders.
+  await u.click(screen.getByRole('button', { name: 'Seeders' }))
+  expect(titles()).toEqual(['Beta app', 'Gamma app', 'Alpha app'])
+  await u.click(screen.getByRole('button', { name: 'Seeders' }))
+  expect(titles()).toEqual(['Alpha app', 'Gamma app', 'Beta app'])
+
+  await u.click(screen.getByRole('button', { name: 'Leechers' }))
+  expect(titles()).toEqual(['Alpha app', 'Beta app', 'Gamma app'])
+  expect(screen.getByRole('button', { name: 'Leechers' }).closest('th')).toHaveAttribute('aria-sort', 'descending')
+})
+
 test('the same release from two indexers renders as two rows without key clashes', async () => {
   const errors = vi.spyOn(console, 'error').mockImplementation(() => {})
   setup({}, () =>
@@ -77,7 +110,7 @@ test('the same release from two indexers renders as two rows without key clashes
   )
   await runSearch()
   await waitFor(() => expect(screen.getAllByText('Twin app')).toHaveLength(2))
-  expect(screen.getByText('PC/ISO, 100001')).toBeInTheDocument()
+  expect(screen.getByText('PC/ISO')).toBeInTheDocument()
   const clashes = errors.mock.calls.filter((c) => String(c[0]).includes('same key'))
   errors.mockRestore()
   expect(clashes).toEqual([])
