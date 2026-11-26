@@ -48,3 +48,45 @@ test('saving sends the whole settings object with the OIDC changes merged', asyn
   expect(body!.libraryRoot).toBe('/data')
   expect(await screen.findByText('Saved.')).toBeInTheDocument()
 })
+
+test('disable local auth needs SSO', async () => {
+  setup(makeSettings({ externalUrl: 'https://soft.example.com' }))
+  expect(await screen.findByRole('switch', { name: /^Disable local auth/ })).toBeDisabled()
+})
+
+test('turning SSO off clears disable local auth', async () => {
+  let body: Settings | undefined
+  const current = makeSettings({ externalUrl: 'https://soft.example.com' })
+  current.oidc = { ...current.oidc, enabled: true, issuer: 'https://idp.example.com', disableLocalAuth: true }
+  setup(current)
+  server.use(
+    http.put('*/api/v1/settings', async ({ request }) => {
+      body = (await request.json()) as Settings
+      return HttpResponse.json(body)
+    }),
+  )
+  expect(await screen.findByRole('switch', { name: /^Disable local auth/ })).toBeChecked()
+  await userEvent.click(screen.getByRole('switch', { name: 'Enable single sign-on' }))
+  expect(screen.getByRole('switch', { name: /^Disable local auth/ })).not.toBeChecked()
+  await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+  await waitFor(() => expect(body).toBeDefined())
+  expect(body!.oidc.enabled).toBe(false)
+  expect(body!.oidc.disableLocalAuth).toBe(false)
+})
+
+test('test button checks the form values', async () => {
+  let body: Record<string, unknown> | undefined
+  const current = makeSettings({ externalUrl: 'https://soft.example.com' })
+  current.oidc = { ...current.oidc, clientSecret: 'shh' }
+  setup(current)
+  server.use(
+    http.post('*/api/v1/settings/oidc/test', async ({ request }) => {
+      body = (await request.json()) as Record<string, unknown>
+      return HttpResponse.json({ ok: false, error: 'Enter the client ID.' })
+    }),
+  )
+  await userEvent.type(await screen.findByLabelText('Issuer URL'), 'https://idp.example.com')
+  await userEvent.click(screen.getByRole('button', { name: 'Test' }))
+  expect(await screen.findByRole('status')).toHaveTextContent('Enter the client ID.')
+  expect(body).toEqual({ externalUrl: 'https://soft.example.com', issuer: 'https://idp.example.com', clientId: '' })
+})
