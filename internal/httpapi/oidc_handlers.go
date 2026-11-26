@@ -20,6 +20,7 @@ func (s *server) registerOIDCRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/auth/oidc/login", s.handleOIDCLogin)
 	mux.HandleFunc("GET /api/v1/auth/oidc/callback", s.handleOIDCCallback)
 	mux.HandleFunc("POST /api/v1/auth/oidc/link", requireUser(s.handleOIDCLink))
+	mux.HandleFunc("POST /api/v1/settings/oidc/test", requireAdmin(s.handleOIDCTest))
 }
 
 func (s *server) setOIDCStateCookie(w http.ResponseWriter, r *http.Request, state string, maxAge int) {
@@ -79,6 +80,29 @@ func (s *server) handleOIDCConfig(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"enabled": enabled, "buttonLabel": st.OIDC.ButtonLabel, "localAuthDisabled": localOff,
 	})
+}
+
+// handleOIDCTest checks unsaved OIDC settings. The client secret isn't sent:
+// nothing here can test it.
+func (s *server) handleOIDCTest(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		ExternalURL string `json:"externalUrl"`
+		Issuer      string `json:"issuer"`
+		ClientID    string `json:"clientId"`
+	}
+	if err := decodeJSON(r, &in); err != nil {
+		writeError(w, http.StatusBadRequest, "That request wasn't valid.")
+		return
+	}
+	type result struct {
+		OK    bool   `json:"ok"`
+		Error string `json:"error"`
+	}
+	if err := s.OIDC.Check(r.Context(), in.ExternalURL, in.Issuer, in.ClientID); err != nil {
+		writeJSON(w, http.StatusOK, result{Error: err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, result{OK: true})
 }
 
 func (s *server) handleOIDCLogin(w http.ResponseWriter, r *http.Request) {
