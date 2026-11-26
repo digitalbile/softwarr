@@ -42,6 +42,7 @@ type Prowlarr struct {
 
 type OIDC struct {
 	Enabled           bool     `json:"enabled"`
+	DisableLocalAuth  bool     `json:"disableLocalAuth"`
 	Issuer            string   `json:"issuer"`
 	ClientID          string   `json:"clientId"`
 	ClientSecret      string   `json:"clientSecret"`
@@ -147,6 +148,9 @@ func IsInputError(err error) bool {
 func validate(in Settings) error {
 	if in.OIDC.Enabled && in.ExternalURL == "" {
 		return errInput("Set the external URL before enabling OIDC.")
+	}
+	if in.OIDC.DisableLocalAuth && !in.OIDC.Enabled {
+		return errInput("Enable OIDC before disabling local auth.")
 	}
 	if in.LibraryRoot != "" && !filepath.IsAbs(in.LibraryRoot) {
 		return errInput("The library folder must be an absolute path.")

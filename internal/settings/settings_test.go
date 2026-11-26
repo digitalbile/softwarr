@@ -92,6 +92,28 @@ func TestSaveRejectsOIDCWithoutExternalURL(t *testing.T) {
 	require.EqualError(t, err, "Set the external URL before enabling OIDC.")
 }
 
+func TestDisableLocalAuthNeedsOIDC(t *testing.T) {
+	_, q := testutil.NewDB(t)
+	s := NewStore(q)
+	ctx := context.Background()
+	in, err := s.Get(ctx)
+	require.NoError(t, err)
+	assert.False(t, in.OIDC.DisableLocalAuth)
+
+	in.OIDC.DisableLocalAuth = true
+	err = s.Save(ctx, in)
+	require.Error(t, err)
+	assert.True(t, IsInputError(err))
+	assert.Equal(t, "Enable OIDC before disabling local auth.", err.Error())
+
+	in.ExternalURL = "https://soft.example.com"
+	in.OIDC.Enabled = true
+	require.NoError(t, s.Save(ctx, in))
+	got, err := s.Get(ctx)
+	require.NoError(t, err)
+	assert.True(t, got.OIDC.DisableLocalAuth)
+}
+
 func TestSaveRejectsNegativeRetention(t *testing.T) {
 	_, q := testutil.NewDB(t)
 	s := NewStore(q)

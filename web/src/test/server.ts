@@ -29,6 +29,7 @@ export function makeSettings(over: Partial<Settings> = {}): Settings {
     prowlarr: { url: '', apiKey: '', categories: [4050] },
     oidc: {
       enabled: false,
+      disableLocalAuth: false,
       issuer: '',
       clientId: '',
       clientSecret: '',
