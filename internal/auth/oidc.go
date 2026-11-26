@@ -102,10 +102,10 @@ func ssoConfigured(st settings.Settings) bool {
 	return st.OIDC.Enabled && st.OIDC.Issuer != "" && st.ExternalURL != ""
 }
 
-// localAuthOff reports whether "Disable local auth" is on and SSO is
+// LocalAuthOff reports whether "Disable local auth" is on and SSO is
 // configured. It leaves out the setup check, for callers that already have a
-// signed-in user.
-func localAuthOff(st settings.Settings) bool {
+// signed-in user or run after setup.
+func LocalAuthOff(st settings.Settings) bool {
 	return ssoConfigured(st) && st.OIDC.DisableLocalAuth
 }
 
@@ -157,7 +157,7 @@ func (o *OIDC) SessionAllowed(ctx context.Context, u User) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	return !localAuthOff(st), nil
+	return !LocalAuthOff(st), nil
 }
 
 // providerFor returns the discovered provider for issuer, reusing the cached

@@ -78,6 +78,12 @@ For local auth, the user chose to hide the form behind a query parameter, and to
 - Error text is for an admin, so it can include the issuer URL, but never the client secret.
 - The settings page gets a "Test" button that shows the result inline, like the Prowlarr settings page.
 
+### Health check
+
+- The OIDC health check runs the same checks as the Test button on the saved settings. It runs at startup and every 5 minutes, shows on the System page, and notifies admins when it starts failing, as the other health checks do.
+- A failure while "Disable local auth" is on adds: "Until it's fixed, only the owner can sign in, at /login?local=1."
+- A failed check never changes how sign-in works. Turning local auth back on automatically was considered and rejected: a provider that starts after softwarr (common in Docker Compose) or a short outage would quietly reopen password sign-in for everyone, and anyone who can take the provider down could cause it.
+
 ### Docs
 
 - Add an ADR explaining how this fits the "local form stays available" rule: the form is still there, behind `?local=1`, and the owner can always use it.

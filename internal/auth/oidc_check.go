@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"slices"
 	"strings"
 
@@ -11,10 +12,16 @@ import (
 )
 
 // Check tests OIDC settings before they're saved, so an admin can find
-// problems without signing in. It can't catch a wrong client secret or an
+// problems without signing in. See CheckOIDC.
+func (o *OIDC) Check(ctx context.Context, externalURL, issuer, clientID string) error {
+	return CheckOIDC(ctx, o.client, externalURL, issuer, clientID)
+}
+
+// CheckOIDC checks OIDC settings against the provider's discovery document,
+// using client for the request. It can't catch a wrong client secret or an
 // unregistered redirect URI, which only show up during a real sign-in. The
 // error text is meant for admins.
-func (o *OIDC) Check(ctx context.Context, externalURL, issuer, clientID string) error {
+func CheckOIDC(ctx context.Context, client *http.Client, externalURL, issuer, clientID string) error {
 	issuer = strings.TrimSpace(issuer)
 	switch {
 	case strings.TrimSpace(externalURL) == "":
@@ -25,7 +32,7 @@ func (o *OIDC) Check(ctx context.Context, externalURL, issuer, clientID string) 
 		return errors.New("Enter the client ID.")
 	}
 	// A fresh provider, so a check never replaces the one sign-in uses.
-	p, err := oidc.NewProvider(oidc.ClientContext(ctx, o.client), issuer)
+	p, err := oidc.NewProvider(oidc.ClientContext(ctx, client), issuer)
 	var mismatch *oidc.IssuerMismatchError
 	if errors.As(err, &mismatch) {
 		return fmt.Errorf("The provider says its issuer is %q, but the issuer URL is %q. They must match exactly.",

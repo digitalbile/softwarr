@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/oauth2-proxy/mockoidc"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -185,10 +186,48 @@ func TestHealthOIDCUnreachable(t *testing.T) {
 	s.ExternalURL = "http://x"
 	s.OIDC.Enabled = true
 	s.OIDC.Issuer = "http://127.0.0.1:1"
+	s.OIDC.ClientID = "client"
 	require.NoError(t, e.st.Save(context.Background(), s))
 	m := byID(e.c.Run(context.Background()))
 	assert.Equal(t, "error", m["oidc"].Level)
-	assert.Contains(t, m["oidc"].Message, "Can't reach the OIDC provider: ")
+	assert.Contains(t, m["oidc"].Message, "SSO sign-in won't work: Couldn't load the provider's settings from http://127.0.0.1:1")
+}
+
+// The health check runs the same checks as the Test button, at startup and
+// on every loop.
+func TestHealthOIDCSettings(t *testing.T) {
+	m, err := mockoidc.Run()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = m.Shutdown() })
+
+	for _, tc := range []struct {
+		name       string
+		mutate     func(*settings.OIDC)
+		level, msg string
+	}{
+		{"works", func(*settings.OIDC) {}, "ok", "The OIDC provider responded and matches the settings."},
+		{"no client ID", func(o *settings.OIDC) { o.ClientID = "" }, "error", "SSO sign-in won't work: Enter the client ID."},
+		{"no issuer", func(o *settings.OIDC) { o.Issuer = "" }, "error", "SSO sign-in won't work: Enter the issuer URL."},
+		{"issuer mismatch", func(o *settings.OIDC) { o.Issuer = m.Issuer() + "/" }, "error",
+			`SSO sign-in won't work: The provider says its issuer is "` + m.Issuer() + `", but the issuer URL is "` + m.Issuer() + `/". They must match exactly.`},
+		{"local auth off", func(o *settings.OIDC) { o.Issuer = m.Issuer() + "/"; o.DisableLocalAuth = true }, "error",
+			`SSO sign-in won't work: The provider says its issuer is "` + m.Issuer() + `", but the issuer URL is "` + m.Issuer() + `/". They must match exactly. Until it's fixed, only the owner can sign in, at /login?local=1.`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e := newEnv(t)
+			s, err := e.st.Get(context.Background())
+			require.NoError(t, err)
+			s.ExternalURL = "https://soft.example.com"
+			s.OIDC.Enabled = true
+			s.OIDC.Issuer = m.Issuer()
+			s.OIDC.ClientID = m.ClientID
+			tc.mutate(&s.OIDC)
+			require.NoError(t, e.st.Save(context.Background(), s))
+			got := byID(e.c.Run(context.Background()))["oidc"]
+			assert.Equal(t, tc.level, got.Level)
+			assert.Equal(t, tc.msg, got.Message)
+		})
+	}
 }
 
 func TestHealthLoopNotifiesOnlyOnNewFailures(t *testing.T) {
