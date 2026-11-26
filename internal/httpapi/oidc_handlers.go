@@ -70,8 +70,15 @@ func (s *server) handleOIDCConfig(w http.ResponseWriter, r *http.Request) {
 		serverError(w, err)
 		return
 	}
+	localOff, err := s.OIDC.LocalAuthDisabled(r.Context())
+	if err != nil {
+		serverError(w, err)
+		return
+	}
 	enabled := st.OIDC.Enabled && st.OIDC.Issuer != "" && st.ExternalURL != "" && !needsSetup
-	writeJSON(w, http.StatusOK, map[string]any{"enabled": enabled, "buttonLabel": st.OIDC.ButtonLabel})
+	writeJSON(w, http.StatusOK, map[string]any{
+		"enabled": enabled, "buttonLabel": st.OIDC.ButtonLabel, "localAuthDisabled": localOff,
+	})
 }
 
 func (s *server) handleOIDCLogin(w http.ResponseWriter, r *http.Request) {

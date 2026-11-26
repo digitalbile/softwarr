@@ -35,6 +35,8 @@ var (
 	ErrOIDCStateInvalid = errors.New("This sign-in attempt expired or was already used. Try again.")
 	ErrOIDCFailed       = errors.New("Signing in with SSO didn't work. Try again.")
 	ErrOIDCUnavailable  = errors.New("Can't reach the SSO provider right now. Try again later.")
+
+	ErrPasswordSignInOff = errors.New("Password sign-in is turned off. Sign in with SSO.")
 )
 
 // OIDCErrorMessage returns the message to show for an error from Begin or
@@ -42,7 +44,7 @@ var (
 // Anything else should be logged and shown as ErrOIDCFailed.
 func OIDCErrorMessage(err error) (string, bool) {
 	for _, e := range []error{
-		ErrOIDCDisabled, ErrSetupNeeded, ErrOIDCStateInvalid, ErrOIDCFailed, ErrOIDCUnavailable,
+		ErrOIDCDisabled, ErrSetupNeeded, ErrOIDCStateInvalid, ErrOIDCFailed, ErrOIDCUnavailable, ErrPasswordSignInOff,
 		ErrEmailTaken, ErrAwaitingApproval, ErrOwnerNoOIDC, ErrIdentityInUse, ErrAlreadyLinked,
 		ErrNotLocal, ErrAccountInactive, ErrNotFound,
 	} {
@@ -92,6 +94,55 @@ func (o *OIDC) config(ctx context.Context) (settings.Settings, error) {
 		return settings.Settings{}, ErrSetupNeeded
 	}
 	return st, nil
+}
+
+// localAuthOff reports whether "Disable local auth" is on and OIDC is
+// configured well enough for people to sign in with it.
+func localAuthOff(st settings.Settings) bool {
+	return st.OIDC.Enabled && st.OIDC.Issuer != "" && st.ExternalURL != "" && st.OIDC.DisableLocalAuth
+}
+
+// LocalAuthDisabled reports whether password sign-in is limited to the owner.
+// It is false whenever SSO can't be used, so nobody is left without a way in.
+func (o *OIDC) LocalAuthDisabled(ctx context.Context) (bool, error) {
+	st, err := o.config(ctx)
+	if errors.Is(err, ErrOIDCDisabled) || errors.Is(err, ErrSetupNeeded) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return st.OIDC.DisableLocalAuth, nil
+}
+
+// CheckPasswordLogin returns ErrPasswordSignInOff when u, having given the
+// right password, may still not sign in with it. Only the owner always can.
+func (o *OIDC) CheckPasswordLogin(ctx context.Context, u User) error {
+	if u.IsOwner {
+		return nil
+	}
+	off, err := o.LocalAuthDisabled(ctx)
+	if err != nil {
+		return err
+	}
+	if off {
+		return ErrPasswordSignInOff
+	}
+	return nil
+}
+
+// SessionAllowed reports whether u's session may continue. While local auth
+// is disabled, accounts other than the owner need an SSO identity, so a
+// password session can't outlive the switch. It reads only cached settings.
+func (o *OIDC) SessionAllowed(ctx context.Context, u User) (bool, error) {
+	if u.IsOwner || u.HasOIDC {
+		return true, nil
+	}
+	st, err := o.settings.Get(ctx)
+	if err != nil {
+		return false, err
+	}
+	return !localAuthOff(st), nil
 }
 
 // providerFor returns the discovered provider for issuer, reusing the cached
