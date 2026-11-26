@@ -39,6 +39,39 @@ test('login shows SSO button only when OIDC enabled', async () => {
   expect(screen.getByLabelText(/Username/)).toBeInTheDocument()
 })
 
+test('login hides the form when local auth is disabled', async () => {
+  server.use(
+    http.get('*/api/v1/auth/oidc/config', () =>
+      HttpResponse.json({ enabled: true, buttonLabel: 'SSO', localAuthDisabled: true }),
+    ),
+  )
+  renderApp('/login')
+  expect(await screen.findByRole('link', { name: 'SSO' })).toBeInTheDocument()
+  expect(screen.queryByLabelText(/Username/)).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Sign in' })).not.toBeInTheDocument()
+})
+
+test('login?local=1 shows the form again', async () => {
+  server.use(
+    http.get('*/api/v1/auth/oidc/config', () =>
+      HttpResponse.json({ enabled: true, buttonLabel: 'SSO', localAuthDisabled: true }),
+    ),
+  )
+  renderApp('/login?local=1')
+  expect(await screen.findByRole('link', { name: 'SSO' })).toBeInTheDocument()
+  expect(screen.getByLabelText(/Username/)).toBeInTheDocument()
+})
+
+test('login shows error when local auth is disabled', async () => {
+  server.use(
+    http.get('*/api/v1/auth/oidc/config', () =>
+      HttpResponse.json({ enabled: true, buttonLabel: 'SSO', localAuthDisabled: true }),
+    ),
+  )
+  renderApp('/login?error=That%20account%20is%20disabled.')
+  expect(await screen.findByText('That account is disabled.')).toBeInTheDocument()
+})
+
 test('login shows error from query string', async () => {
   renderApp('/login?error=That%20account%20is%20disabled.')
   expect(await screen.findByText('That account is disabled.')).toBeInTheDocument()

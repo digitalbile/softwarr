@@ -10,6 +10,7 @@ import { useAuth } from '../auth/useAuth'
 export interface OIDCConfig {
   enabled: boolean
   buttonLabel: string
+  localAuthDisabled: boolean
 }
 
 export function LoginPage() {
@@ -24,7 +25,8 @@ export function LoginPage() {
     queryFn: () => api<OIDCConfig>('/auth/oidc/config'),
   })
 
-  if (loading) return <FullPageLoader />
+  // Wait for the SSO config so a hidden form doesn't flash up first.
+  if (loading || oidc.isPending) return <FullPageLoader />
   if (setupNeeded) return <Navigate to="/setup" replace />
   if (user) {
     // A failed SSO link bounces here while still signed in.
@@ -43,6 +45,8 @@ export function LoginPage() {
   })
 
   const shown = error || urlError
+  // The owner can still reach the form at /login?local=1.
+  const showForm = !oidc.data?.localAuthDisabled || params.get('local') === '1'
 
   return (
     <Center mih="100vh" p="md">
@@ -51,16 +55,20 @@ export function LoginPage() {
           <Stack>
             <Title order={3}>Sign in to softwarr</Title>
             {shown && <Alert color="red">{shown}</Alert>}
-            <TextInput label="Username" autoComplete="username" required {...form.getInputProps('username')} />
-            <PasswordInput
-              label="Password"
-              autoComplete="current-password"
-              required
-              {...form.getInputProps('password')}
-            />
-            <Button type="submit" loading={form.submitting}>
-              Sign in
-            </Button>
+            {showForm && (
+              <>
+                <TextInput label="Username" autoComplete="username" required {...form.getInputProps('username')} />
+                <PasswordInput
+                  label="Password"
+                  autoComplete="current-password"
+                  required
+                  {...form.getInputProps('password')}
+                />
+                <Button type="submit" loading={form.submitting}>
+                  Sign in
+                </Button>
+              </>
+            )}
             {oidc.data?.enabled && (
               <Button component="a" href={`${urlBase}/api/v1/auth/oidc/login`} variant="default">
                 {oidc.data.buttonLabel || 'Sign in with SSO'}

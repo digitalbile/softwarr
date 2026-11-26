@@ -47,7 +47,9 @@ export function makeSettings(over: Partial<Settings> = {}): Settings {
 export const handlers = [
   http.get('*/api/v1/setup', () => HttpResponse.json({ needed: false })),
   http.get('*/api/v1/auth/me', () => HttpResponse.json({ error: 'Sign in first.' }, { status: 401 })),
-  http.get('*/api/v1/auth/oidc/config', () => HttpResponse.json({ enabled: false, buttonLabel: '' })),
+  http.get('*/api/v1/auth/oidc/config', () =>
+    HttpResponse.json({ enabled: false, buttonLabel: '', localAuthDisabled: false }),
+  ),
   http.get('*/api/v1/notifications', () => HttpResponse.json([])),
   http.get('*/api/v1/requests', () => HttpResponse.json([])),
 ]
