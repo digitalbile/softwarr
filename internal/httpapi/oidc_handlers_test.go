@@ -635,3 +635,22 @@ func TestDisableLocalAuthEndsLocalSessions(t *testing.T) {
 	setDisabled(false)
 	assert.Equal(t, http.StatusUnauthorized, cu.do("GET", "/api/v1/auth/me", nil).StatusCode)
 }
+
+func TestOIDCSettingsTest(t *testing.T) {
+	ts := newTestServer(t)
+	m := newMockOIDC(t)
+	type result struct {
+		OK    bool   `json:"ok"`
+		Error string `json:"error"`
+	}
+	body := map[string]string{"externalUrl": "https://soft.example.com", "issuer": m.Issuer(), "clientId": "client"}
+
+	ts.loginAsOwner()
+	uc := ts.newClient()
+	uc.loginAsUser()
+	assert.Equal(t, http.StatusForbidden, uc.do("POST", "/api/v1/settings/oidc/test", body).StatusCode)
+
+	assert.Equal(t, result{OK: true}, decode[result](t, ts.do("POST", "/api/v1/settings/oidc/test", body)))
+	body["clientId"] = ""
+	assert.Equal(t, result{Error: "Enter the client ID."}, decode[result](t, ts.do("POST", "/api/v1/settings/oidc/test", body)))
+}
