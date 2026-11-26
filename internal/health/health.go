@@ -15,8 +15,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/coreos/go-oidc/v3/oidc"
-
+	"github.com/digitalbile/softwarr/internal/auth"
 	"github.com/digitalbile/softwarr/internal/db/dbq"
 	"github.com/digitalbile/softwarr/internal/downloadclient"
 	"github.com/digitalbile/softwarr/internal/events"
@@ -267,15 +266,22 @@ func (c *Checker) hardlinks(ctx context.Context) []Check {
 	return []Check{ok("hardlinks", "The last torrent import used a hardlink.")}
 }
 
+// oidc runs the same checks as the Test button on the saved settings.
 func (c *Checker) oidc(ctx context.Context, st settings.Settings) []Check {
-	if !st.OIDC.Enabled || st.OIDC.Issuer == "" {
+	if !st.OIDC.Enabled {
 		return nil
 	}
 	hc := &http.Client{Timeout: httpTimeout}
-	if _, err := oidc.NewProvider(oidc.ClientContext(ctx, hc), st.OIDC.Issuer); err != nil {
-		return []Check{fail("oidc", "Can't reach the OIDC provider: %v", err)}
+	err := auth.CheckOIDC(ctx, hc, st.ExternalURL, st.OIDC.Issuer, st.OIDC.ClientID)
+	if err == nil {
+		return []Check{ok("oidc", "The OIDC provider responded and matches the settings.")}
 	}
-	return []Check{ok("oidc", "The OIDC provider is reachable.")}
+	ch := fail("oidc", "SSO sign-in won't work: %v", err)
+	if auth.LocalAuthOff(st) {
+		// Added after fail, which would scrub the query string.
+		ch.Message += " Until it's fixed, only the owner can sign in, at /login?local=1."
+	}
+	return []Check{ch}
 }
 
 // Loop runs the checks now and then every interval until ctx ends.
