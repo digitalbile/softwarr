@@ -118,6 +118,9 @@ func (s *server) handleIndexers(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadGateway, "Couldn't reach Prowlarr: "+err.Error())
 		return
 	}
+	// Prowlarr skips indexers that offer none of the searched categories, so
+	// picking one would only ever return nothing.
+	list = slices.DeleteFunc(list, func(i prowlarr.Indexer) bool { return !i.Supports(st.Prowlarr.Categories) })
 	writeJSON(w, http.StatusOK, list)
 }
 

@@ -49,17 +49,23 @@ func (c *Client) Search(ctx context.Context, query string, categories, indexerID
 
 func (c *Client) Indexers(ctx context.Context) ([]Indexer, error) {
 	var wire []struct {
-		ID       int    `json:"id"`
-		Name     string `json:"name"`
-		Protocol string `json:"protocol"`
-		Enable   bool   `json:"enable"`
+		ID           int    `json:"id"`
+		Name         string `json:"name"`
+		Protocol     string `json:"protocol"`
+		Enable       bool   `json:"enable"`
+		Capabilities struct {
+			Categories []wireCategory `json:"categories"`
+		} `json:"capabilities"`
 	}
 	if err := c.get(ctx, "/api/v1/indexer", nil, &wire); err != nil {
 		return nil, err
 	}
 	out := make([]Indexer, len(wire))
 	for i, w := range wire {
-		out[i] = Indexer{ID: w.ID, Name: w.Name, Protocol: w.Protocol, Enabled: w.Enable}
+		out[i] = Indexer{
+			ID: w.ID, Name: w.Name, Protocol: w.Protocol, Enabled: w.Enable,
+			Categories: flattenCategories(nil, w.Capabilities.Categories),
+		}
 	}
 	return out, nil
 }

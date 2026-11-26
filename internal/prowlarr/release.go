@@ -71,6 +71,26 @@ type Indexer struct {
 	Name     string `json:"name"`
 	Protocol string `json:"protocol"`
 	Enabled  bool   `json:"enabled"`
+	// Categories lists the category ids the indexer offers, subcategories
+	// included. The browser doesn't need them.
+	Categories []int `json:"-"`
+}
+
+// Supports reports whether the indexer offers anything in the same top-level
+// group (PC, Console and so on) as one of categories. No categories means no
+// filter, and an indexer that reports no categories isn't ruled out.
+func (i Indexer) Supports(categories []int) bool {
+	if len(categories) == 0 || len(i.Categories) == 0 {
+		return true
+	}
+	for _, want := range categories {
+		for _, have := range i.Categories {
+			if have/1000 == want/1000 {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // wireRelease mirrors Prowlarr's JSON, where fields may be null or absent.
