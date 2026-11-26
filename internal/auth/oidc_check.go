@@ -26,8 +26,13 @@ func (o *OIDC) Check(ctx context.Context, externalURL, issuer, clientID string) 
 	}
 	// A fresh provider, so a check never replaces the one sign-in uses.
 	p, err := oidc.NewProvider(oidc.ClientContext(ctx, o.client), issuer)
+	var mismatch *oidc.IssuerMismatchError
+	if errors.As(err, &mismatch) {
+		return fmt.Errorf("The provider says its issuer is %q, but the issuer URL is %q. They must match exactly.",
+			mismatch.Discovered, mismatch.Provided)
+	}
 	if err != nil {
-		return fmt.Errorf("Couldn't load the provider's settings from %s: %v", issuer, err)
+		return fmt.Errorf("Couldn't load the provider's settings from %s: %s", issuer, briefError(err))
 	}
 	if ep := p.Endpoint(); ep.AuthURL == "" || ep.TokenURL == "" {
 		return errors.New("The provider doesn't list an authorization or token endpoint.")
@@ -43,4 +48,15 @@ func (o *OIDC) Check(ctx context.Context, externalURL, issuer, clientID string) 
 		return errors.New("The provider doesn't support the authorization code flow.")
 	}
 	return nil
+}
+
+// briefError shortens err to one line. go-oidc puts the whole response body
+// in its error for a non-200 reply, which is often an HTML page.
+func briefError(err error) string {
+	const limit = 120
+	msg, _, _ := strings.Cut(err.Error(), "\n")
+	if r := []rune(msg); len(r) > limit {
+		msg = string(r[:limit]) + "…"
+	}
+	return msg
 }

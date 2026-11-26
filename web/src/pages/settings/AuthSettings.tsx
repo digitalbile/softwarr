@@ -2,6 +2,7 @@ import { Alert, Button, CopyButton, Group, Loader, PasswordInput, Switch, Text, 
 import { useState } from 'react'
 import { api } from '../../api/client'
 import type { Settings } from '../../api/types'
+import { useAuth } from '../../auth/useAuth'
 import { SectionForm } from './SectionForm'
 import { TestButton } from './TestButton'
 import { useSaveSettings, useSettings } from './useSettings'
@@ -12,6 +13,7 @@ export function redirectUri(externalUrl: string) {
 
 function AuthForm({ settings }: { settings: Settings }) {
   const save = useSaveSettings()
+  const { user } = useAuth()
   const [o, setO] = useState({ ...settings.oidc, scopes: settings.oidc.scopes.join(' ') })
   const set = <K extends keyof typeof o>(k: K, v: (typeof o)[K]) => setO((prev) => ({ ...prev, [k]: v }))
   const hasUrl = settings.externalUrl.trim() !== ''
@@ -55,6 +57,12 @@ function AuthForm({ settings }: { settings: Settings }) {
         disabled={!o.enabled}
         onChange={(e) => set('disableLocalAuth', e.currentTarget.checked)}
       />
+      {o.disableLocalAuth && !settings.oidc.disableLocalAuth && user && !user.isOwner && !user.hasOidc && (
+        <Alert color="yellow">
+          Your account isn't connected to SSO, so saving this signs you out and only the owner can turn it off again.
+          Connect SSO from your profile first.
+        </Alert>
+      )}
       {!hasUrl && (
         <Text size="sm" c="dimmed">
           Set the external URL in General settings before enabling single sign-on.

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/oauth2-proxy/mockoidc"
@@ -49,6 +50,11 @@ func TestOIDCCheck(t *testing.T) {
 	noResponseTypes := discoveryServer(t, endpoints)
 	noEndpoints := discoveryServer(t, nil)
 	mismatch := discoveryServer(t, map[string]any{"issuer": "https://elsewhere.example.com"})
+	errorPage := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte("<html>" + strings.Repeat("x", 2000) + "SECRET</html>"))
+	}))
+	t.Cleanup(errorPage.Close)
 	closed := httptest.NewServer(http.NotFoundHandler())
 	closed.Close()
 
@@ -62,8 +68,9 @@ func TestOIDCCheck(t *testing.T) {
 		{"no external URL", " ", m.Issuer(), "client", "Set the external URL in General settings first."},
 		{"no issuer", ext, "", "client", "Enter the issuer URL."},
 		{"no client ID", ext, m.Issuer(), " ", "Enter the client ID."},
-		{"issuer mismatch", ext, mismatch.URL, "client", "Couldn't load the provider's settings from " + mismatch.URL},
-		{"trailing slash", ext, m.Issuer() + "/", "client", "Couldn't load the provider's settings from " + m.Issuer() + "/"},
+		{"issuer mismatch", ext, mismatch.URL, "client", `The provider says its issuer is "https://elsewhere.example.com", but the issuer URL is "` + mismatch.URL + `". They must match exactly.`},
+		{"trailing slash", ext, m.Issuer() + "/", "client", `The provider says its issuer is "` + m.Issuer() + `", but the issuer URL is "` + m.Issuer() + `/". They must match exactly.`},
+		{"error page", ext, errorPage.URL, "client", "Couldn't load the provider's settings from " + errorPage.URL + ": 404"},
 		{"unreachable", ext, closed.URL, "client", "Couldn't load the provider's settings"},
 		{"no endpoints", ext, noEndpoints.URL, "client", "The provider doesn't list an authorization or token endpoint."},
 		{"no code flow", ext, idTokenOnly.URL, "client", "The provider doesn't support the authorization code flow."},
@@ -77,6 +84,9 @@ func TestOIDCCheck(t *testing.T) {
 			}
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), tc.want)
+			// Never echo a whole response body back to the admin.
+			assert.NotContains(t, err.Error(), "SECRET")
+			assert.Less(t, len(err.Error()), 400)
 		})
 	}
 }
