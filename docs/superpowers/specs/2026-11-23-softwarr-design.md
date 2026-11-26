@@ -114,7 +114,7 @@ The image is based on Alpine and follows the linuxserver convention: it starts a
 
 ## Roles and accounts
 
-The owner is the first account, created by a first-run setup wizard. It's always local and always an admin, and it can't be deleted, disabled, demoted, or linked to OIDC. The local login form always stays available so the owner can get in when OIDC is down.
+The owner is the first account, created by a first-run setup wizard. It's always local and always an admin, and it can't be deleted, disabled, demoted, or linked to OIDC. The local login form always stays available so the owner can get in when OIDC is down. When an admin turns on "Disable local auth," the form moves to `/login?local=1` and only the owner can use it (see `2026-11-25-oidc-local-auth-and-check-design.md`).
 
 Admins approve requests and manage settings and users. Their own requests are approved automatically.
 
@@ -135,7 +135,7 @@ Running `softwarr reset-password` inside the container (`docker exec softwarr so
 
 - Authorization code flow with PKCE, using `coreos/go-oidc` and `golang.org/x/oauth2`.
 - Phase 1 supports one provider: one OIDC configuration and one login button. Identities are still keyed on issuer plus `sub`, so more providers can be added later without a data migration.
-- Settings: issuer URL, client ID and secret, scopes, and the label for the login button.
+- Settings: issuer URL, client ID and secret, scopes, the label for the login button, and "Disable local auth." A Test button checks the issuer's discovery document before saving.
 - External URL (Settings > General) is the public base URL of softwarr, for example `https://softwarr.example.com`, and must be set before OIDC can be enabled. The redirect URI (`{externalURL}/api/v1/auth/oidc/callback`) and the links in webhook payloads are built from it. Neither is ever derived from the request's Host or X-Forwarded-* headers.
 - An identity is the pair (issuer, `sub`), stored in a separate `user_identities` table. Email is never used as the identity key.
 - Auto-provisioning is on by default. The first login from an unknown (issuer, sub) creates a new user account.
