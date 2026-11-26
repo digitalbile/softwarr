@@ -1,0 +1,39 @@
+# git-cliff works out the next release version and writes the release notes
+# from the conventional commits since the last tag. The Release workflow
+# (.github/workflows/release.yml) runs it. See docs/ci-and-releases.md.
+
+[changelog]
+header = ""
+# One section per group, one line per commit: "- scope: Message (abc1234)".
+body = """
+{% for group, commits in commits | group_by(attribute="group") %}
+### {{ group | striptags | trim }}
+{% for commit in commits %}
+- {% if commit.scope %}{{ commit.scope }}: {% endif %}{{ commit.message | upper_first }} ({{ commit.id | truncate(length=7, end="") }})\
+{% endfor %}
+{% endfor %}
+"""
+trim = true
+
+[git]
+conventional_commits = true
+filter_unconventional = true
+filter_commits = true
+tag_pattern = '^v[0-9]+\.[0-9]+\.[0-9]+$'
+# Only these commits bump the version and appear in the notes. The comments
+# in the group names set the order of the sections.
+commit_parsers = [
+  { message = '^[a-z]+(\(.*\))?!:', group = "<!-- 0 -->Breaking changes" },
+  { body = "BREAKING CHANGE", group = "<!-- 0 -->Breaking changes" },
+  { message = "^feat", group = "<!-- 1 -->Features" },
+  { message = "^fix", group = "<!-- 2 -->Fixes" },
+  { message = "^perf", group = "<!-- 3 -->Performance" },
+  { message = ".*", skip = true },
+]
+
+[bump]
+# Below 1.0, a feature or a breaking change bumps the minor version.
+# Going to 1.0 is a tag pushed by hand.
+features_always_bump_minor = true
+breaking_always_bump_major = false
+initial_tag = "v0.1.0"
