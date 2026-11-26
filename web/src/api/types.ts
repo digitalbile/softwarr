@@ -32,6 +32,7 @@ export interface ProwlarrSettings {
 
 export interface OIDCSettings {
   enabled: boolean
+  disableLocalAuth: boolean
   issuer: string
   clientId: string
   clientSecret: string
