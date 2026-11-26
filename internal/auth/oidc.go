@@ -83,7 +83,7 @@ func (o *OIDC) config(ctx context.Context) (settings.Settings, error) {
 	if err != nil {
 		return settings.Settings{}, err
 	}
-	if !st.OIDC.Enabled || st.OIDC.Issuer == "" || st.ExternalURL == "" {
+	if !ssoConfigured(st) {
 		return settings.Settings{}, ErrOIDCDisabled
 	}
 	n, err := o.q.CountUsers(ctx)
@@ -96,23 +96,38 @@ func (o *OIDC) config(ctx context.Context) (settings.Settings, error) {
 	return st, nil
 }
 
-// localAuthOff reports whether "Disable local auth" is on and OIDC is
-// configured well enough for people to sign in with it.
-func localAuthOff(st settings.Settings) bool {
-	return st.OIDC.Enabled && st.OIDC.Issuer != "" && st.ExternalURL != "" && st.OIDC.DisableLocalAuth
+// ssoConfigured reports whether the settings are enough for SSO sign-in.
+// Every check of whether SSO is usable starts here.
+func ssoConfigured(st settings.Settings) bool {
+	return st.OIDC.Enabled && st.OIDC.Issuer != "" && st.ExternalURL != ""
 }
 
-// LocalAuthDisabled reports whether password sign-in is limited to the owner.
-// It is false whenever SSO can't be used, so nobody is left without a way in.
-func (o *OIDC) LocalAuthDisabled(ctx context.Context) (bool, error) {
+// localAuthOff reports whether "Disable local auth" is on and SSO is
+// configured. It leaves out the setup check, for callers that already have a
+// signed-in user.
+func localAuthOff(st settings.Settings) bool {
+	return ssoConfigured(st) && st.OIDC.DisableLocalAuth
+}
+
+// LoginOptions is what the login page offers.
+type LoginOptions struct {
+	SSO               bool
+	ButtonLabel       string
+	LocalAuthDisabled bool // password sign-in is for the owner only
+}
+
+// LoginOptions works out what the login page offers. Password sign-in is only
+// limited while SSO is usable, so nobody is left without a way in.
+func (o *OIDC) LoginOptions(ctx context.Context) (LoginOptions, error) {
 	st, err := o.config(ctx)
 	if errors.Is(err, ErrOIDCDisabled) || errors.Is(err, ErrSetupNeeded) {
-		return false, nil
+		st, err = o.settings.Get(ctx)
+		return LoginOptions{ButtonLabel: st.OIDC.ButtonLabel}, err
 	}
 	if err != nil {
-		return false, err
+		return LoginOptions{}, err
 	}
-	return st.OIDC.DisableLocalAuth, nil
+	return LoginOptions{SSO: true, ButtonLabel: st.OIDC.ButtonLabel, LocalAuthDisabled: st.OIDC.DisableLocalAuth}, nil
 }
 
 // CheckPasswordLogin returns ErrPasswordSignInOff when u, having given the
@@ -121,11 +136,11 @@ func (o *OIDC) CheckPasswordLogin(ctx context.Context, u User) error {
 	if u.IsOwner {
 		return nil
 	}
-	off, err := o.LocalAuthDisabled(ctx)
+	opts, err := o.LoginOptions(ctx)
 	if err != nil {
 		return err
 	}
-	if off {
+	if opts.LocalAuthDisabled {
 		return ErrPasswordSignInOff
 	}
 	return nil
