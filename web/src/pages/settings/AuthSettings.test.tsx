@@ -8,12 +8,12 @@ import { renderApp, setupApiServer } from '../../test/utils'
 
 setupApiServer()
 
-function setup(settings: Settings) {
+function setup(settings: Settings, user = makeUser({ isAdmin: true })) {
   server.use(
-    http.get('*/api/v1/auth/me', () => HttpResponse.json(makeUser({ isAdmin: true }))),
+    http.get('*/api/v1/auth/me', () => HttpResponse.json(user)),
     http.get('*/api/v1/settings', () => HttpResponse.json(settings)),
   )
-  renderApp('/settings/auth')
+  return renderApp('/settings/auth')
 }
 
 test('OIDC cannot be enabled without external URL', async () => {
@@ -89,4 +89,29 @@ test('test button checks the form values', async () => {
   await userEvent.click(screen.getByRole('button', { name: 'Test' }))
   expect(await screen.findByRole('status')).toHaveTextContent('Enter the client ID.')
   expect(body).toEqual({ externalUrl: 'https://soft.example.com', issuer: 'https://idp.example.com', clientId: '' })
+})
+
+const lockoutWarning = /Your account isn't connected to SSO/
+
+function ssoOn() {
+  const s = makeSettings({ externalUrl: 'https://soft.example.com' })
+  s.oidc = { ...s.oidc, enabled: true, issuer: 'https://idp.example.com' }
+  return s
+}
+
+test('warns an admin without SSO that disabling local auth signs them out', async () => {
+  setup(ssoOn())
+  await userEvent.click(await screen.findByRole('switch', { name: /^Disable local auth/ }))
+  expect(screen.getByText(lockoutWarning)).toBeInTheDocument()
+})
+
+test('no lockout warning for the owner or an SSO-linked admin', async () => {
+  const first = setup(ssoOn(), makeUser({ isAdmin: true, isOwner: true }))
+  await userEvent.click(await screen.findByRole('switch', { name: /^Disable local auth/ }))
+  expect(screen.queryByText(lockoutWarning)).not.toBeInTheDocument()
+  first.unmount()
+
+  setup(ssoOn(), makeUser({ isAdmin: true, hasOidc: true }))
+  await userEvent.click(await screen.findByRole('switch', { name: /^Disable local auth/ }))
+  expect(screen.queryByText(lockoutWarning)).not.toBeInTheDocument()
 })

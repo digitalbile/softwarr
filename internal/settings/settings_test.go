@@ -114,6 +114,20 @@ func TestDisableLocalAuthNeedsOIDC(t *testing.T) {
 	assert.True(t, got.OIDC.DisableLocalAuth)
 }
 
+func TestIssuerIsTrimmed(t *testing.T) {
+	_, q := testutil.NewDB(t)
+	s := NewStore(q)
+	ctx := context.Background()
+	in, err := s.Get(ctx)
+	require.NoError(t, err)
+	// Sign-in uses the stored issuer as is, and the Test button trims it.
+	in.OIDC.Issuer = "  https://idp.example.com/app/ \n"
+	require.NoError(t, s.Save(ctx, in))
+	got, err := s.Get(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, "https://idp.example.com/app/", got.OIDC.Issuer)
+}
+
 func TestSaveRejectsNegativeRetention(t *testing.T) {
 	_, q := testutil.NewDB(t)
 	s := NewStore(q)

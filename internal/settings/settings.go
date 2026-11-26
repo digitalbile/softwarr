@@ -100,6 +100,8 @@ func (s *Store) Get(ctx context.Context) (Settings, error) {
 func (s *Store) Save(ctx context.Context, in Settings) error {
 	in = in.clone()
 	in.ExternalURL = strings.TrimRight(strings.TrimSpace(in.ExternalURL), "/")
+	// Only spaces: the issuer must match the provider's exactly, slash and all.
+	in.OIDC.Issuer = strings.TrimSpace(in.OIDC.Issuer)
 	in.LibraryRoot = CleanLibraryRoot(in.LibraryRoot)
 	if err := validate(in); err != nil {
 		return err
