@@ -143,6 +143,8 @@ func (c *client) doLogin(ctx context.Context) error {
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<16))
 	switch {
+	case resp.StatusCode == http.StatusNoContent:
+		// qBittorrent 5.2 answers a successful login with 204 and no body.
 	case resp.StatusCode == http.StatusForbidden:
 		return errors.New("qBittorrent refused the login. Too many failed attempts can ban an address for a while.")
 	case resp.StatusCode != http.StatusOK:
