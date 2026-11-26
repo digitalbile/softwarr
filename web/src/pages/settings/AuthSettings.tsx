@@ -1,7 +1,9 @@
 import { Alert, Button, CopyButton, Group, Loader, PasswordInput, Switch, Text, TextInput } from '@mantine/core'
 import { useState } from 'react'
+import { api } from '../../api/client'
 import type { Settings } from '../../api/types'
 import { SectionForm } from './SectionForm'
+import { TestButton } from './TestButton'
 import { useSaveSettings, useSettings } from './useSettings'
 
 export function redirectUri(externalUrl: string) {
@@ -18,19 +20,40 @@ function AuthForm({ settings }: { settings: Settings }) {
   return (
     <SectionForm
       title="Authentication"
-      description="Let people sign in with an OpenID Connect provider. Local accounts keep working."
+      description="Let people sign in with an OpenID Connect provider."
       onSave={() =>
         save.mutateAsync((s) => ({
           ...s,
           oidc: { ...o, scopes: o.scopes.split(/[\s,]+/).filter(Boolean) },
         }))
       }
+      actions={
+        <TestButton
+          okText="The provider responded. The client secret and redirect URI are checked only when someone signs in."
+          run={() =>
+            api('/settings/oidc/test', {
+              method: 'POST',
+              json: { externalUrl: settings.externalUrl, issuer: o.issuer, clientId: o.clientId },
+            })
+          }
+        />
+      }
     >
       <Switch
         label="Enable single sign-on"
         checked={o.enabled}
         disabled={!hasUrl && !o.enabled}
-        onChange={(e) => set('enabled', e.currentTarget.checked)}
+        onChange={(e) => {
+          const on = e.currentTarget.checked
+          setO((prev) => ({ ...prev, enabled: on, disableLocalAuth: on && prev.disableLocalAuth }))
+        }}
+      />
+      <Switch
+        label="Disable local auth"
+        description="Only the owner can sign in with a password, at /login?local=1. Everyone else signs in with SSO. Local accounts that aren't connected to SSO are signed out."
+        checked={o.disableLocalAuth}
+        disabled={!o.enabled}
+        onChange={(e) => set('disableLocalAuth', e.currentTarget.checked)}
       />
       {!hasUrl && (
         <Text size="sm" c="dimmed">
