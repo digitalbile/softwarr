@@ -11,6 +11,7 @@ Write a record only for a decision someone would otherwise reopen. Most changes 
 | [0001](0001-hand-written-api-types.md) | The frontend API types are written by hand, and a Go test checks their field names | Accepted |
 | [0002](0002-biome-for-the-ui.md) | Biome lints and formats the UI | Accepted |
 | [0003](0003-handlers-have-no-database.md) | HTTP handlers have no database handle and go through services | Accepted |
+| [0004](0004-owner-only-password-sign-in.md) | "Disable local auth" leaves password sign-in to the owner | Accepted |
 
 ## Template
 
